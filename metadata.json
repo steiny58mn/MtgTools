@@ -1,0 +1,8 @@
+{
+  "name": "MTG Tools",
+  "description": "A collection of tools for MTG players, including decklist management, MTGO log parsing, deck updates, set reviews, and card formatting.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

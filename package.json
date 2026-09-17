@@ -1,0 +1,12 @@
+{
+  "name": "mtgtools-workspace",
+  "private": true,
+  "workspaces": [
+    "mtgtoolsreact"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace=mtgtoolsreact",
+    "build": "npm run build --workspace=mtgtoolsreact",
+    "lint": "npm run lint --workspace=mtgtoolsreact"
+  }
+}

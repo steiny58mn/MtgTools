@@ -10,7 +10,7 @@ export default defineConfig({
     ],
     server: {
         host: '0.0.0.0',
-        port: 5173,
-        allowedHosts: ['localtest', '127.0.0.1', 'https://mtgtools.azurewebsites.net'],
+        port: 3000,
+        allowedHosts: true,
     }
 })
