@@ -10,18 +10,19 @@ public static class Decklists
 {
     public static async Task<string> CreateDecklist(IFormFile file)
     {
-        await TursoCardDb.UpdateBulkData(); //Check for updates before getting cards
+        await TursoCardDb.UpdateBulkData(); // Check for updates before getting cards
         var allCards = await GetCardList(file);
         return WriteToDecklist(allCards);
     }
+
     public static async Task<string> CompareDecklists(IFormFile firstFile, IFormFile secondFile)
     {
-        await TursoCardDb.UpdateBulkData(); //Check for updates before getting cards
+        await TursoCardDb.UpdateBulkData(); // Check for updates before getting cards
 
         var deckDifferences = new StringBuilder();
         
-        var firstDeckList = GetCardList(firstFile).Result;
-        var secondDeckList = GetCardList(secondFile).Result;
+        var firstDeckList = await GetCardList(firstFile);
+        var secondDeckList = await GetCardList(secondFile);
         
         deckDifferences.AppendLine("CUTS");
         var cutCards = GetListDifferences(firstDeckList, secondDeckList, ref deckDifferences);
@@ -33,21 +34,23 @@ public static class Decklists
         
         return deckDifferences.ToString();
     }
-    public static async Task<string>  CreateDeckPicklist(IFormFile file)
+
+    public static async Task<string> CreateDeckPicklist(IFormFile file)
     {
-        await TursoCardDb.UpdateBulkData(); //Check for updates before getting cards
+        await TursoCardDb.UpdateBulkData(); // Check for updates before getting cards
         var allCards = await GetCardList(file);
         return WriteToPicklist(allCards);
     }
+
     private static void LogDecklist(List<CardRecord> deckList)
     {
         try
         {
             var sb = new StringBuilder();
-            _ = Logging.ApiLogger.LogMessage($"Logging contents of decklis. Count = {deckList.Count()}");
+            _ = Logging.ApiLogger.LogMessage($"Logging contents of decklist. Count = {deckList.Count}");
             foreach (var cardRecord in deckList)
             {
-                sb.AppendLine($"Card {cardRecord.Name.Replace("'","''")} - Qty : {cardRecord.Qty}");
+                sb.AppendLine($"Card {cardRecord.Name.Replace("'", "''")} - Qty : {cardRecord.Qty}");
             }
         
             _ = Logging.ApiLogger.LogMessage($"Full Contents of decklist: {sb}");
@@ -55,13 +58,13 @@ public static class Decklists
         catch (Exception e)
         {
             _ = Logging.ApiLogger.LogMessage($"Error with logging decklist {e}");
-            throw;
         }
     }
+
     private static int GetListDifferences(List<CardRecord> secondDeckList, List<CardRecord> firstDeckList, ref StringBuilder deckDifferences)
     {
         var cardDifferenceCount = 0;
-        foreach (var card in secondDeckList.OrderBy(x=>x.Name))
+        foreach (var card in secondDeckList.OrderBy(x => x.Name))
         {
             var result = firstDeckList.FirstOrDefault(x => x.Name == card.Name);
             var quantity = card.Qty;
@@ -70,7 +73,7 @@ public static class Decklists
             {
                 if (result.Qty < quantity)
                 {
-                    quantity = quantity - result.Qty;
+                    quantity -= result.Qty;
                 }
                 else
                 {
@@ -84,39 +87,40 @@ public static class Decklists
 
         return cardDifferenceCount;
     }
+
     private static async Task<List<CardRecord>> GetCardList(IFormFile file)
     {
-        var cardList = new List<CardRecord>();
-        cardList = Path.GetExtension(file.FileName) switch
+        var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
+        return ext switch
         {
-            ".txt" => ParsePlainText(file),
-            ".xml" or ".dek" => ParseXmlText(file),
-            _ => cardList
+            ".txt" => await ParsePlainText(file),
+            ".xml" or ".dek" => await ParseXmlText(file),
+            _ => []
         };
-
-        return cardList;
     }
-    private static List<CardRecord> ParseXmlText(IFormFile file)
+
+    private static async Task<List<CardRecord>> ParseXmlText(IFormFile file)
     {
-        var cards =  new List<CardRecord>();
+        var cards = new List<CardRecord>();
         var xmlDoc = new XmlDocument();
 
         using (var reader = new StreamReader(file.OpenReadStream()))
         {
-            xmlDoc.LoadXml(reader.ReadToEnd());
+            var xmlContent = await reader.ReadToEndAsync();
+            xmlDoc.LoadXml(xmlContent);
         }
 
-        //Loop Through all 'Cards' Nodes
+        // Loop Through all 'Cards' Nodes
         foreach (XmlNode node in xmlDoc.GetElementsByTagName("Cards"))
         {
+            if (node.OuterXml == null) continue;
             var nodeDict = TextHelpers.SplitNodeOuterXml(node.OuterXml);
             
             var cardRecord = new CardRecord();
             
             foreach (var s in nodeDict.Keys)
             {
-                nodeDict.TryGetValue(s, out var tmpValue);
-                if (!string.IsNullOrWhiteSpace(tmpValue))
+                if (nodeDict.TryGetValue(s, out var tmpValue) && !string.IsNullOrWhiteSpace(tmpValue))
                 {
                     cardRecord = TextHelpers.ParseValues(s, tmpValue, cardRecord);
                 }
@@ -132,18 +136,20 @@ public static class Decklists
                 cards.Add(cardRecord);
             }
         }
-        //LogDecklist(cards);
-        return LookupAndCleanupCards(cards);
+
+        return await LookupAndCleanupCards(cards);
     }
-    private static List<CardRecord> ParsePlainText(IFormFile file)
+
+    private static async Task<List<CardRecord>> ParsePlainText(IFormFile file)
     {
-        var cards =  new List<CardRecord>();
+        var cards = new List<CardRecord>();
         using (var reader = new StreamReader(file.OpenReadStream()))
         {
-            while (reader.Peek() >= 0)
+            string? rawLine;
+            while ((rawLine = await reader.ReadLineAsync()) != null)
             {
-                var line = reader.ReadLine()?.Split(' ', 2);
-                if (line?.Length != 2) 
+                var line = rawLine.Split(' ', 2);
+                if (line.Length != 2) 
                     continue;
 
                 if (!int.TryParse(line[0], out var qtyInt) || qtyInt <= 0) 
@@ -157,36 +163,44 @@ public static class Decklists
                 cards.Add(card);
             }
         }
-        //LogDecklist(cards);
-        return LookupAndCleanupCards(cards);
+
+        return await LookupAndCleanupCards(cards);
     }
+
     private static string WriteToDecklist(List<CardRecord> cards)
     {
         var decklist = new StringBuilder();
         var cardCount = 0;
-        var deckName = "";
+        var deckName = string.Empty;
         var commanderColors = new List<string>();
         var i = 0;
 
-        foreach (var card in cards.Where(x => x.IsSideboard))
+        var sideboards = cards.Where(x => x.IsSideboard).ToList();
+        var mainboards = cards.Where(x => !x.IsSideboard).ToList();
+
+        foreach (var card in sideboards)
         {
             i++;
             if (i == 1)
                 deckName = card.Name.Replace("’", "'");
-            else deckName = deckName + " & " + card.Name.Replace("’", "'");
+            else 
+                deckName = $"{deckName} & {card.Name.Replace("’", "'")}";
             
-            commanderColors.AddRange(card.ColorIdentity!);
+            if (card.ColorIdentity != null)
+            {
+                commanderColors.AddRange(card.ColorIdentity);
+            }
         }
 
         decklist.AppendLine($"[deck= {deckName} style={TextHelpers.GetDeckColorNickname(commanderColors)}]");
 
-        decklist.AppendLine(WriteCardTypesToFile("General", cards.Where(x => x.IsSideboard).ToList()));
-        decklist.AppendLine(WriteCardTypesToFile("Land", cards.Where(x => x.Type == "Land").ToList()));
+        decklist.AppendLine(WriteCardTypesToFile("General", sideboards));
+        decklist.AppendLine(WriteCardTypesToFile("Land", mainboards.Where(x => x.Type == "Land").ToList()));
         
-        var types = cards.Where(x => x.Type != "Land" && !x.IsSideboard).GroupBy(y => y.Type).ToList();
-        var highCountList = new List<IGrouping<string,CardRecord>>();
+        var nonLandTypes = mainboards.Where(x => x.Type != "Land").GroupBy(y => y.Type).ToList();
+        var highCountList = new List<IGrouping<string, CardRecord>>();
         
-        foreach (var type in types.OrderByDescending(x => x.Count()))
+        foreach (var type in nonLandTypes.OrderByDescending(x => x.Count()))
         {
             if (type.Count() > 39)
             {
@@ -206,13 +220,15 @@ public static class Decklists
             if (cardCount > 34)
                 cardCount = 0;
         }
+
         foreach (var highCount in highCountList.OrderByDescending(x => x.Count()))
         {
             decklist.AppendLine(WriteCardTypesToFile(highCount.Key, highCount.ToList()));
         }
 
-        decklist.AppendLine($"Game Changers ({cards.Where(x=>x.IsGameChanger).Sum(x => x.Qty)})");
-        foreach (var gc in cards.Where(x => x.IsGameChanger))
+        var gameChangers = cards.Where(x => x.IsGameChanger).ToList();
+        decklist.AppendLine($"Game Changers ({gameChangers.Sum(x => x.Qty)})");
+        foreach (var gc in gameChangers)
         {
             decklist.AppendLine($"{gc.Qty} {gc.Name}");
         }
@@ -220,11 +236,10 @@ public static class Decklists
         var missingCards = cards.Where(x => string.IsNullOrEmpty(x.Type)).ToList();
         if (missingCards.Count > 0)
         {
-            decklist.AppendLine(
-                $"Unable to Find Cards ({missingCards.Sum(x => x.Qty)})");
-            foreach (var gc in missingCards)
+            decklist.AppendLine($"Unable to Find Cards ({missingCards.Sum(x => x.Qty)})");
+            foreach (var mc in missingCards)
             {
-                decklist.AppendLine($"{gc.Qty} {gc.Name}");
+                decklist.AppendLine($"{mc.Qty} {mc.Name}");
             }
         }
 
@@ -232,11 +247,12 @@ public static class Decklists
         
         return decklist.ToString();
     }
+
     private static string WriteCardTypesToFile(string cardType, List<CardRecord> cardRecords)
     {
         var cardTypeStringBuilder = new StringBuilder();
         cardTypeStringBuilder.AppendLine($"{cardType} ({cardRecords.Sum(x => x.Qty)})");
-        foreach (CardRecord card in cardRecords.OrderBy(x => x.Name))
+        foreach (var card in cardRecords.OrderBy(x => x.Name))
         {
             var textLine = $"{card.Qty} {card.Name.Replace("’", "'")}";
             cardTypeStringBuilder.AppendLine(textLine);
@@ -244,27 +260,29 @@ public static class Decklists
         
         return cardTypeStringBuilder.ToString();
     }
-    private static List<CardRecord> LookupAndCleanupCards(List<CardRecord> cards)
+
+    private static async Task<List<CardRecord>> LookupAndCleanupCards(List<CardRecord> cards)
     {
         foreach (var cardRecord in cards)
         {
             cardRecord.Name = TextHelpers.SplitCardName(cardRecord.Name);
         }
-        return TursoCardDb.GetCardsFromDb(cards).Result;
+        return await TursoCardDb.GetCardsFromDb(cards);
     }
+
     private static string WriteToPicklist(List<CardRecord> cards)
     {
         var decklist = new StringBuilder();
 
         decklist.AppendLine(WriteCardTypesToFile("Land", cards.Where(x => x.Type == "Land").ToList()));
         var multicolor = cards.Where(x => x.Colors.Length > 1).ToList();
-        var colorless = cards.Where(x => x.Type != "Land"  && x.Colors.Length == 0 && !string.IsNullOrEmpty(x.Type)).ToList();
+        var colorless = cards.Where(x => x.Type != "Land" && x.Colors.Length == 0 && !string.IsNullOrEmpty(x.Type)).ToList();
         var colors = cards.Where(x => x.Type != "Land" && x.Colors.Length == 1).GroupBy(y => y.Colors).ToList();
         
         foreach (var color in colors)
         {
             var colorRecord = Colors.ColorList().FirstOrDefault(x => x.ColorAbbreviation == color.Key);
-            decklist.AppendLine(WriteCardTypesToFile((colorRecord?.ColorName ?? "Color Unknown"), color.ToList()));
+            decklist.AppendLine(WriteCardTypesToFile(colorRecord?.ColorName ?? "Color Unknown", color.ToList()));
         }
 
         if (multicolor.Count != 0)
@@ -274,12 +292,12 @@ public static class Decklists
 
         if (colorless.Count != 0)
         {
-            
             decklist.AppendLine(WriteCardTypesToFile("Colorless", colorless));
         }
         
-        decklist.AppendLine($"Game Changers ({cards.Where(x=>x.IsGameChanger).Sum(x => x.Qty)})");
-        foreach (var gc in cards.Where(x => x.IsGameChanger))
+        var gameChangers = cards.Where(x => x.IsGameChanger).ToList();
+        decklist.AppendLine($"Game Changers ({gameChangers.Sum(x => x.Qty)})");
+        foreach (var gc in gameChangers)
         {
             decklist.AppendLine($"{gc.Qty} {gc.Name}");
         }
@@ -288,11 +306,10 @@ public static class Decklists
         if (missingCards.Count > 0)
         {
             decklist.AppendLine();
-            decklist.AppendLine(
-                $"Unable to Find Cards ({missingCards.Sum(x => x.Qty)})");
-            foreach (var gc in missingCards)
+            decklist.AppendLine($"Unable to Find Cards ({missingCards.Sum(x => x.Qty)})");
+            foreach (var mc in missingCards)
             {
-                decklist.AppendLine($"{gc.Qty} {gc.Name}");
+                decklist.AppendLine($"{mc.Qty} {mc.Name}");
             }
         }
 

@@ -11,34 +11,55 @@ namespace MtgToolsApi.DataLayer;
 
 public static class TursoCardDb
 {
-    private static Db DbClient()
+    private static string _dbUrl = DbUrl;
+    private static string _dbToken = DbToken;
+
+    public static void Configure(string? dbUrl, string? dbToken)
     {
-        var db = new Db(DbUrl, DbToken);
-        db.ApplyMigrationsAsync();
+        if (!string.IsNullOrWhiteSpace(dbUrl)) _dbUrl = dbUrl;
+        if (!string.IsNullOrWhiteSpace(dbToken)) _dbToken = dbToken;
+    }
+
+    private static readonly Lazy<Db> LazyDb = new(() =>
+    {
+        var db = new Db(_dbUrl, _dbToken);
+        try
+        {
+            db.ApplyMigrationsAsync().GetAwaiter().GetResult();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error applying initial Turso DB migrations: {ex.Message}");
+        }
         return db;
+    });
+
+    public static Db DbClient => LazyDb.Value;
+
+    private static readonly HttpClient SharedHttpClient = CreateHttpClient();
+
+    private static HttpClient CreateHttpClient()
+    {
+        var client = new HttpClient
+        {
+            Timeout = TimeSpan.FromMinutes(10)
+        };
+        client.DefaultRequestHeaders.Add("User-Agent", "MTGToolsApp/1.0");
+        client.DefaultRequestHeaders.Add("Accept", "*/*");
+        return client;
     }
 
     public static async Task<int?> LogMessage(string message)
     {
         try
         {
-            var dbClient = DbClient();
+            var dbClient = DbClient;
             if (dbClient.Logs != null)
             {
-                var commandBuilder = new StringBuilder();
+                var escapedMessage = message.Replace("'", "''");
+                var command = $"INSERT INTO Logs (logmessage, loggedat) VALUES ('{escapedMessage}', '{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}');";
 
-                commandBuilder.AppendLine($"INSERT INTO Logs");
-                commandBuilder.AppendLine("(");
-                commandBuilder.AppendLine("logmessage,loggedat");
-                commandBuilder.AppendLine(")");
-                commandBuilder.AppendLine("VALUES");
-
-                commandBuilder.Append('(');
-                commandBuilder.Append($"'{message}',");
-                commandBuilder.Append($"'{DateTime.Now}'");
-                commandBuilder.Append(')');
-
-                var result = await dbClient.Client.QueryAsync(commandBuilder.ToString());
+                var result = await dbClient.Client.QueryAsync(command);
                 return result?.Results[0].Response?.Result.AffectedRowCount;
             }
 
@@ -46,17 +67,19 @@ public static class TursoCardDb
         }
         catch (Exception e)
         {
-            Console.WriteLine(e);
+            Console.WriteLine($"Logging to DB failed: {e.Message}");
             return null;
         }
     }
 
     public static async Task<List<CardRecord>> GetCardsFromDb(List<CardRecord> cardList)
     {
+        if (cardList.Count == 0) return cardList;
+
         await Logging.ApiLogger.LogMessage("Getting cards from DB");
-        //System.Diagnostics.Trace.TraceInformation("Test trace getting cards");
-        var cards = string.Join(",", cardList.Select(x => $"\"{x.Name}\"").ToList());
-        var dbClient = DbClient();
+        var escapedNames = cardList.Select(x => $"\"{x.Name.Replace("\"", "\"\"")}\"");
+        var cards = string.Join(",", escapedNames);
+        var dbClient = DbClient;
         
         var command = string.Format(SqlQueries.SelectCardsFromList, cards);
         var results = await dbClient.Client.QueryAsync(command);
@@ -66,17 +89,17 @@ public static class TursoCardDb
 
         foreach (var row in resultRows)
         {
-            //If we can't find a record by name, try it by printedname
-            var card = cardList.FirstOrDefault(x => x.Name == row[1].Value?.ToString()) ??
-                       cardList.FirstOrDefault(x => x.Name == row[2].Value?.ToString());
+            var cardName = row[1].Value?.ToString();
+            var printedName = row[2].Value?.ToString();
+
+            // Match by name or printed name
+            var card = cardList.FirstOrDefault(x => x.Name == cardName) ??
+                       cardList.FirstOrDefault(x => x.Name == printedName);
             if (card == null)
             {
-                //If we still can't find it, just continue
                 continue;
             }
 
-            var cardName = row[1].Value?.ToString();
-            //var printedName = row[2].Value?.ToString();
             var type = row[3].Value?.ToString();
             var colors = row[4].Value?.ToString();
             var colorIdentity = row[5].Value?.ToString();
@@ -96,7 +119,7 @@ public static class TursoCardDb
         return cardList.OrderBy(x => x.Name).ToList();
     }
 
-    public static async void PopulateCardDbFromJsonFile(IFormFile file)
+    public static async Task PopulateCardDbFromJsonFile(IFormFile file)
     {
         try
         {
@@ -114,11 +137,11 @@ public static class TursoCardDb
     {
         var commandBuilder = new StringBuilder();
 
-        commandBuilder.AppendLine($"INSERT INTO cards");
-        commandBuilder.AppendLine("(");
-        commandBuilder.AppendLine("name,printedname,type,colors,coloridentity,isgamechanger");
-        commandBuilder.AppendLine(")");
+        commandBuilder.AppendLine("INSERT INTO cards");
+        commandBuilder.AppendLine("(name,printedname,type,colors,coloridentity,isgamechanger)");
         commandBuilder.AppendLine("VALUES");
+
+        var validCardTypes = TextHelpers.GetCtvList();
 
         foreach (var card in cardsFromJson ?? [])
         {
@@ -135,56 +158,61 @@ public static class TursoCardDb
                 colors = card.CardFacesArray[0].Colors;
             }
 
-            if (!TextHelpers.GetCtvList().Any(x => type.Contains(x.TypeValue)))
+            if (!validCardTypes.Any(x => type != null && type.Contains(x.TypeValue)))
             {
                 continue;
             }
 
             commandBuilder.Append('(');
-            //Clean things up for inserting into SQL
-            commandBuilder.Append(
-                $"'{(!string.IsNullOrEmpty(name) ? name.Replace("'", "''").Replace(";", "") : string.Empty)}',");
-            commandBuilder.Append(
-                $"'{(!string.IsNullOrEmpty(printedName) ? printedName.Replace("'", "''").Replace(";", "") : string.Empty)}',");
+            commandBuilder.Append($"'{(!string.IsNullOrEmpty(name) ? name.Replace("'", "''").Replace(";", "") : string.Empty)}',");
+            commandBuilder.Append($"'{(!string.IsNullOrEmpty(printedName) ? printedName.Replace("'", "''").Replace(";", "") : string.Empty)}',");
             commandBuilder.Append($"'{(!string.IsNullOrEmpty(type) ? type.Replace("'", "''") : string.Empty)}',");
-            commandBuilder.Append($"'{string.Join(",", colors)}',");
-            commandBuilder.Append($"'{string.Join(",", card.ColorIdentity)}',");
+            commandBuilder.Append($"'{string.Join(",", colors ?? [])}',");
+            commandBuilder.Append($"'{string.Join(",", card.ColorIdentity ?? [])}',");
             commandBuilder.Append($"'{card.IsGameChanger}'");
             commandBuilder.Append("),");
         }
 
         var commandString = commandBuilder.ToString();
         var lastComma = commandString.LastIndexOf(',');
+        if (lastComma < 0) return string.Empty;
         return commandString.Remove(lastComma, 1).Insert(lastComma, ";");
     }
 
     public static async Task UpdateBulkData()
     {
-        await Logging.ApiLogger.LogMessage("Getting bulk data");
-        //System.Diagnostics.Trace.TraceInformation("Test trace updating");
+        await Logging.ApiLogger.LogMessage("Checking for bulk data updates");
         try
         {
             var latestUpdateDate = DateTime.MinValue;
-            var dbClient = DbClient();
+            var dbClient = DbClient;
             if (dbClient.BulkData != null)
             {
-                var command = string.Format(SqlQueries.SelecttUniqueArtworkBulkData);
-                var results = dbClient.Client.QueryAsync(command).Result;
+                var command = SqlQueries.SelecttUniqueArtworkBulkData;
+                var results = await dbClient.Client.QueryAsync(command);
                 var resultRows = results?.Results[0].Response?.Result.Rows;
-                if (resultRows is { Count: > 0 })
+                if (resultRows is { Count: > 0 } && resultRows[0][0].Value != null)
                 {
-                    latestUpdateDate = Convert.ToDateTime(resultRows[0][0].Value?.ToString());
-                    await Logging.ApiLogger.LogMessage($"Date of Last update is {latestUpdateDate}");
+                    if (DateTime.TryParse(resultRows[0][0].Value?.ToString(), out var parsedDate))
+                    {
+                        latestUpdateDate = parsedDate;
+                    }
+                    await Logging.ApiLogger.LogMessage($"Date of last update is {latestUpdateDate}");
                 }
 
                 var bulkDataJson = await GetBulkDataJson();
-                var uniqueArtworkRecord = bulkDataJson?.Where(x => x.Type == "unique_artwork").FirstOrDefault();
+                var uniqueArtworkRecord = bulkDataJson?.FirstOrDefault(x => x.Type == "unique_artwork");
                 if (uniqueArtworkRecord != null &&
-                    Convert.ToDateTime(uniqueArtworkRecord.UpdatedAt) > latestUpdateDate)
+                    DateTime.TryParse(uniqueArtworkRecord.UpdatedAt, out var updatedAt) &&
+                    updatedAt > latestUpdateDate)
                 {
-                    await Logging.ApiLogger.LogMessage($"Date of update is {uniqueArtworkRecord.UpdatedAt}");
+                    await Logging.ApiLogger.LogMessage($"Date of new update is {uniqueArtworkRecord.UpdatedAt}");
                     await dbClient.BulkData.TruncateTable();
-                    await dbClient.Client.QueryAsync(BuildBulkDataInsert(bulkDataJson));
+                    var insertBulkSql = BuildBulkDataInsert(bulkDataJson);
+                    if (!string.IsNullOrEmpty(insertBulkSql))
+                    {
+                        await dbClient.Client.QueryAsync(insertBulkSql);
+                    }
                     var uniqueArtworkJson = await SelectUniqueArtworkBulkData(uniqueArtworkRecord.DownloadUri);
                     await PopulateCardDbFromJson(uniqueArtworkJson);
                 }
@@ -193,27 +221,24 @@ public static class TursoCardDb
         catch (Exception e)
         {
             await Logging.ApiLogger.LogMessage(e.ToString());
-            throw;
         }
     }
 
     private static async Task<List<BulkData>?> GetBulkDataJson()
     {
-        await Logging.ApiLogger.LogMessage("Get bulk data");
-        //System.Diagnostics.Trace.TraceInformation("Test trace bulk data");
+        await Logging.ApiLogger.LogMessage("Fetching bulk data metadata from Scryfall");
         try
         {
-            var client = GetHttpClient("https://api.scryfall.com/bulk-data");
-            using HttpResponseMessage response = client.GetAsync(client.BaseAddress).Result;
+            using var response = await SharedHttpClient.GetAsync(ScryfallBulkDataUrl);
             response.EnsureSuccessStatusCode();
-            string responseBody = response.Content.ReadAsStringAsync().Result;
-            BulkDataParent? responseList = JsonSerializer.Deserialize<BulkDataParent>(responseBody, JsonNamingOptions());
+            await using var stream = await response.Content.ReadAsStreamAsync();
+            var responseList = await JsonSerializer.DeserializeAsync<BulkDataParent>(stream, JsonNamingOptions());
             return responseList?.Data;
         }
         catch (Exception e)
         {
-            await Logging.ApiLogger.LogMessage(e.ToString());
-            throw;
+            await Logging.ApiLogger.LogMessage($"Failed to get bulk data: {e}");
+            return null;
         }
     }
 
@@ -221,19 +246,18 @@ public static class TursoCardDb
     {
         try
         {
-            var client = GetHttpClient(downloadUri);
-            using HttpResponseMessage response = client.GetAsync(client.BaseAddress).Result;
+            using var response = await SharedHttpClient.GetAsync(downloadUri);
             response.EnsureSuccessStatusCode();
             
-            var jsonStream = await response.Content.ReadAsStreamAsync();
+            await using var jsonStream = await response.Content.ReadAsStreamAsync();
             var cardsFromJson = await JsonSerializer.DeserializeAsync<List<Card>>(jsonStream, JsonNamingOptions());
             
             return cardsFromJson;
         }
         catch (Exception e)
         {
-            await Logging.ApiLogger.LogMessage(e.ToString());
-            throw;
+            await Logging.ApiLogger.LogMessage($"Failed to download unique artwork cards: {e}");
+            return null;
         }
     }
 
@@ -248,9 +272,9 @@ public static class TursoCardDb
             }
 
             var recordsInserted = 0;
-            await Logging.ApiLogger.LogMessage("Populating DB with cards");
-            var dbClient = DbClient();
-            var uniqueCards = cardsFromJson.DistinctBy(x => new { x.Name, x.PrintedName }).OrderBy(x => x.Name);
+            await Logging.ApiLogger.LogMessage($"Populating DB with {cardsFromJson.Count} cards");
+            var dbClient = DbClient;
+            var uniqueCards = cardsFromJson.DistinctBy(x => new { x.Name, x.PrintedName }).OrderBy(x => x.Name).ToList();
             if (dbClient.Cards == null) return;
             await dbClient.Cards.TruncateTable();
 
@@ -258,16 +282,17 @@ public static class TursoCardDb
             foreach (var chunk in chunks)
             {
                 var bulkInsertCommand = BuildBulkCardInsert(chunk.ToList());
-
-                var result = await dbClient.Client.QueryAsync(bulkInsertCommand);
-                recordsInserted += result?.Results[0].Response?.Result.AffectedRowCount ?? 0;
+                if (!string.IsNullOrEmpty(bulkInsertCommand))
+                {
+                    var result = await dbClient.Client.QueryAsync(bulkInsertCommand);
+                    recordsInserted += result?.Results[0].Response?.Result.AffectedRowCount ?? 0;
+                }
             }
-            await Logging.ApiLogger.LogMessage($"{recordsInserted} records inserted");
+            await Logging.ApiLogger.LogMessage($"{recordsInserted} records successfully inserted");
         }
         catch (Exception ex)
         {
-            await Logging.ApiLogger.LogMessage(ex.Message);
-            throw;
+            await Logging.ApiLogger.LogMessage($"Error populating card DB: {ex.Message}");
         }
     }
 
@@ -275,10 +300,8 @@ public static class TursoCardDb
     {
         var commandBuilder = new StringBuilder();
 
-        commandBuilder.AppendLine($"INSERT INTO bulkdata");
-        commandBuilder.AppendLine("(");
-        commandBuilder.AppendLine("scryfallid,type,updatedat,uri,name,description,size,downloaduri");
-        commandBuilder.AppendLine(")");
+        commandBuilder.AppendLine("INSERT INTO bulkdata");
+        commandBuilder.AppendLine("(scryfallid,type,updatedat,uri,name,description,size,downloaduri)");
         commandBuilder.AppendLine("VALUES");
 
         foreach (var record in bulkDataJson ?? [])
@@ -288,8 +311,8 @@ public static class TursoCardDb
             commandBuilder.Append($"'{record.Type}',");
             commandBuilder.Append($"'{record.UpdatedAt}',");
             commandBuilder.Append($"'{record.Uri}',");
-            commandBuilder.Append($"'{record.Name}',");
-            commandBuilder.Append($"'{record.Description}',");
+            commandBuilder.Append($"'{(record.Name ?? string.Empty).Replace("'", "''")}',");
+            commandBuilder.Append($"'{(record.Description ?? string.Empty).Replace("'", "''")}',");
             commandBuilder.Append($"'{record.Size}',");
             commandBuilder.Append($"'{record.DownloadUri}'");
             commandBuilder.Append("),");
@@ -297,27 +320,7 @@ public static class TursoCardDb
 
         var commandString = commandBuilder.ToString();
         var lastComma = commandString.LastIndexOf(',');
+        if (lastComma < 0) return string.Empty;
         return commandString.Remove(lastComma, 1).Insert(lastComma, ";");
-    }
-
-    private static HttpClient GetHttpClient(string url)
-    {
-        try
-        {
-            HttpClient client = new()
-            {
-                Timeout = Timeout.InfiniteTimeSpan
-            };
-        
-            client.BaseAddress =  new Uri(url);
-            client.DefaultRequestHeaders.Add("User-Agent", "MTGToolsApp");
-            client.DefaultRequestHeaders.Add("Accept", "*/*");
-            return client;
-        }
-        catch (Exception e)
-        {
-            _ = Logging.ApiLogger.LogMessage(e.ToString());
-            throw;
-        }
     }
 }

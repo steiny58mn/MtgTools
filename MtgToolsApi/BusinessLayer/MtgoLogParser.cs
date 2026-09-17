@@ -3,8 +3,11 @@ using System.Text.RegularExpressions;
 
 namespace MtgToolsApi.BusinessLayer;
 
-public class MtgoLogParser
+public static partial class MtgoLogParser
 {
+    [GeneratedRegex(@"[^a-zA-Z0-9\:_+()/,.' -]")]
+    private static partial Regex CleanLineRegex();
+
     public static string ParseMtgoGameLog(IFormFile file)
     {
         using var sr = new StreamReader(file.OpenReadStream(), Encoding.ASCII);
@@ -20,12 +23,8 @@ public class MtgoLogParser
         
         CleanUpLines(ref lines, string.Empty);
         CleanUpTurnHeaders(ref lines);
-        var sb = new StringBuilder();
-        foreach (var line in lines)
-        {
-            sb.AppendLine(line);
-        }
-        return sb.AppendJoin(Environment.NewLine, lines).ToString();
+
+        return string.Join(Environment.NewLine, lines.Where(l => !string.IsNullOrWhiteSpace(l)));
     }
 
     private static void CleanUpTurnHeaders(ref List<string> lines)
@@ -55,11 +54,11 @@ public class MtgoLogParser
                 try
                 {
                     var indexOfCharacter = tmpLine.IndexOf("@[", StringComparison.Ordinal);
-                    //This gets the text up to the beginning of the first card tag 
+                    // This gets the text up to the beginning of the first card tag 
                     var fullCardText = tmpLine[indexOfCharacter..];
-                    //Remove the leading two characters
+                    // Remove the leading two characters
                     indexOfCharacter = fullCardText.IndexOf("@]", StringComparison.Ordinal);
-                    //This concats the string found above with the rest of the string to remove the card tag info
+                    // This concats the string found above with the rest of the string to remove the card tag info
                     if (indexOfCharacter > 0)
                     {
                         fullCardText = fullCardText[..(indexOfCharacter + 2)];
@@ -92,7 +91,7 @@ public class MtgoLogParser
             {
                 if (string.IsNullOrEmpty(v))
                 {
-                    lines[i] = Regex.Replace(lines[i], "[^a-zA-Z0-9\\:_+()/,.' -]", "");
+                    lines[i] = CleanLineRegex().Replace(lines[i], "");
                 }
                 else
                 {
@@ -103,14 +102,14 @@ public class MtgoLogParser
             {
                 if (getFirstIndex)
                 {
-                    lines[i] = lines[i].Substring(0, lines[i].IndexOf(v, StringComparison.Ordinal));
+                    lines[i] = lines[i][..lines[i].IndexOf(v, StringComparison.Ordinal)];
                 }
                 else
                 {
                     var lastIndex = lines[i].LastIndexOf(v, StringComparison.Ordinal);
                     lines[i] = lines[i][..lastIndex];
 
-                    var lastIndexOfClosingParenthesis = lastIndex = lines[i].LastIndexOf(')');
+                    var lastIndexOfClosingParenthesis = lines[i].LastIndexOf(')');
                     if ((lastIndex + 6) > lines[i].Length && lastIndex > lastIndexOfClosingParenthesis)
                     {
                         lines[i] = lines[i][..lastIndex];

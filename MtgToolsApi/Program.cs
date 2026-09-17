@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
+using MtgToolsApi.DataLayer;
 
 namespace MtgToolsApi;
 
@@ -11,14 +12,28 @@ public class Program
         builder.Logging.ClearProviders();
         builder.Logging.AddConsole();
         builder.Logging.AddAzureWebAppDiagnostics();
-        var allowedOrigins = new [] {"https://mtgtools.azurewebsites.net", "https://mtgtools.frostpointlabs.com", "http://localhost:5173"};
+
+        // Configure Turso credentials from Configuration if provided
+        var tursoUrl = builder.Configuration["Turso:DbUrl"];
+        var tursoToken = builder.Configuration["Turso:DbToken"];
+        TursoCardDb.Configure(tursoUrl, tursoToken);
+
+        var allowedOrigins = new[]
+        {
+            "https://mtgtools.azurewebsites.net",
+            "https://mtgtools.frostpointlabs.com",
+            "http://localhost:5173",
+            "http://localhost:3000"
+        };
+        
         var mtgTools = new MtgTools();
         
         // Add services to the container.
         builder.Services.AddAuthorization();
         builder.Services.AddOpenApi();
+        builder.Services.AddHttpClient();
         
-        //Add Cors to ensure the React App can access the API
+        // Add CORS to ensure the React App can access the API
         builder.Services.AddCors(setup =>
         {
             setup.AddDefaultPolicy(policy =>
@@ -31,11 +46,11 @@ public class Program
         });
         
         #if WINDOWS
-            builder.Services.Configure<IISServerOptions>(options =>
-            {
-                options.AllowSynchronousIO = true;
-                options.MaxRequestBodySize = int.MaxValue;
-            });
+        builder.Services.Configure<IISServerOptions>(options =>
+        {
+            options.AllowSynchronousIO = true;
+            options.MaxRequestBodySize = int.MaxValue;
+        });
         #endif
         
         builder.Services.Configure<KestrelServerOptions>(options =>
@@ -47,11 +62,9 @@ public class Program
         builder.Services.Configure<FormOptions>(x =>
         {
             x.ValueLengthLimit = int.MaxValue;
-            x.MultipartBodyLengthLimit = int.MaxValue; // if don't set default value is: 128 MB
+            x.MultipartBodyLengthLimit = int.MaxValue;
             x.MultipartHeadersLengthLimit = int.MaxValue;
         });
-        
-        builder.Logging.AddAzureWebAppDiagnostics();
         
         var app = builder.Build();
 
@@ -64,18 +77,28 @@ public class Program
         app.UseHttpsRedirection();
         app.UseRouting();
         app.UseCors();
-
         app.UseAuthorization();
         app.UseDeveloperExceptionPage();
-        app.MapGet("/mtgtools/deckcolors", mtgTools.DeckColors);
-        app.MapGet("/mtgtools/getbbcode", mtgTools.GetBbCode);
-        app.MapPost("/mtgtools/formattext", mtgTools.FormatText);
-        app.MapPost("/mtgtools/createdecklist", mtgTools.CreateDecklist).DisableAntiforgery();
-        app.MapPost("/mtgtools/updatedb", mtgTools.PopulateCardDbFromJsonFile).DisableAntiforgery();
-        app.MapPost("/mtgtools/comparefiles", mtgTools.CompareFiles).DisableAntiforgery();
-        app.MapPost("/mtgtools/test", mtgTools.Test);
-        app.MapPost("/mtgtools/parsemtgolog", mtgTools.ParseMtgoLog).DisableAntiforgery();
-        app.MapPost("/mtgtools/createdeckpicklist", mtgTools.CreateDeckPicklist).DisableAntiforgery();
+
+        // Health and Status endpoints for direct browser access
+        app.MapGet("/", mtgTools.Status);
+        
+        // Group MTG endpoints
+        var mtgGroup = app.MapGroup("/mtgtools");
+        
+        mtgGroup.MapGet("/status", mtgTools.Status);
+        mtgGroup.MapGet("/version", mtgTools.Status);
+        mtgGroup.MapGet("/health", mtgTools.Status);
+        mtgGroup.MapGet("/deckcolors", mtgTools.DeckColors);
+        mtgGroup.MapGet("/getbbcode", mtgTools.GetBbCode);
+        mtgGroup.MapPost("/formattext", mtgTools.FormatText);
+        mtgGroup.MapPost("/createdecklist", mtgTools.CreateDecklist).DisableAntiforgery();
+        mtgGroup.MapPost("/updatedb", mtgTools.PopulateCardDbFromJsonFile).DisableAntiforgery();
+        mtgGroup.MapPost("/comparefiles", mtgTools.CompareFiles).DisableAntiforgery();
+        mtgGroup.MapPost("/test", mtgTools.Test);
+        mtgGroup.MapPost("/parsemtgolog", mtgTools.ParseMtgoLog).DisableAntiforgery();
+        mtgGroup.MapPost("/createdeckpicklist", mtgTools.CreateDeckPicklist).DisableAntiforgery();
+
         app.Run();
     }
 }
