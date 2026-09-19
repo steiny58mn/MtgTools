@@ -32,7 +32,17 @@ export default function ColorDropDown(props: { updateType: number, textAreaRef: 
     async function getBBCodeForColorCombination(color: string) {
         try {
             const res = await fetch(`${apiPaths.GetBbCode}?color=${color}&bbCodeType=${props.updateType}`);
-            const data = await res.text();
+            const raw = await res.text();
+            let data = raw;
+            try {
+                const parsed = JSON.parse(raw);
+                if (typeof parsed === "string") {
+                    data = parsed;
+                }
+            } catch {
+                // Keep raw if not a JSON-encoded string
+            }
+
             if (props.textAreaRef.current) {
                 props.textAreaRef.current.value = data;
                 // Dispatch change event to ensure any listeners are triggered
@@ -84,5 +94,5 @@ export default function ColorDropDown(props: { updateType: number, textAreaRef: 
                 )}
             </AnimatePresence>
         </div>
-    )
+    );
 }

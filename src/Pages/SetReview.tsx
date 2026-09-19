@@ -23,7 +23,16 @@ function SetReview() {
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ pastedText, cursorPosition, ExistingText: existingText }),
                 });
-                const data = await res.text();
+                const raw = await res.text();
+                let data = raw;
+                try {
+                    const parsed = JSON.parse(raw);
+                    if (typeof parsed === "string") {
+                        data = parsed;
+                    }
+                } catch {
+                    // Keep raw if not a JSON-encoded string
+                }
                 
                 if (textAreaRef.current) {
                     textAreaRef.current.value = data;
@@ -46,7 +55,7 @@ function SetReview() {
                     animate={{ scale: 1, opacity: 1 }}
                     className="w-20 h-20 bg-purple-500/10 rounded-3xl flex items-center justify-center mx-auto shadow-inner border border-purple-500/20"
                 >
-                    < BookOpen className="text-purple-400" size={40} />
+                    <BookOpen className="text-purple-400" size={40} />
                 </motion.div>
                 <div className="space-y-2">
                     <h2 className="text-4xl font-black tracking-tight text-white uppercase">Set Review</h2>
