@@ -6,7 +6,8 @@ export const ToolTypeCodes = {
     GameSummary: 3
 } as const
 
-const baseUrl = import.meta.env.VITE_API_URL || (import.meta.env.PROD ? config.remoteurl : (config.localurl || config.url));
+const rawBaseUrl = import.meta.env.VITE_API_URL || (import.meta.env.PROD ? config.remoteurl : (config.localurl || config.url));
+const baseUrl = rawBaseUrl.replace(/\/+$/, '');
 
 export const apiPaths = {
     Root: `${baseUrl}/${config.mtgtoolsendpoint}`,

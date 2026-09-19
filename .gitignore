@@ -1,1 +1,8 @@
 ﻿/node_modules/*
+dist
+dist-ssr
+
+# Local environment overrides
+*.local
+.env.local
+.env.*.local
