@@ -6,23 +6,23 @@ import {
     FilePlus, 
     FileDiff, 
     Terminal, 
-    Search
+    BookOpen
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { cn } from "../lib/utils";
 
 const tools = [
     { 
+        to: "/setreview", 
+        label: "Set Review", 
+        icon: BookOpen, 
+        desc: "Browse sets, evaluate cards for your commander decks, and generate MTGNexus BBCode." 
+    },
+    { 
         to: "/deckupdates", 
         label: "Deck Updates", 
         icon: RefreshCw, 
         desc: "Generate BBCode for deck update announcements." 
-    },
-    { 
-        to: "/setreview", 
-        label: "Set Review", 
-        icon: Search, 
-        desc: "Format and organize your magic set reviews." 
     },
     { 
         to: "/gamesummary", 

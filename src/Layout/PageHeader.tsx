@@ -3,14 +3,12 @@ import manaSymbols from '../assets/manasymbols.png'
 import mtgNexusLogo from '../assets/mtgnexus.jpeg'
 import { motion, AnimatePresence } from "motion/react";
 import { useState, useEffect } from "react";
-import { Menu, X, Container} from "lucide-react";
+import { Menu, X } from "lucide-react";
 import { cn } from "../lib/utils";
-import {Nav} from "react-bootstrap";
-
 const navLinks = [
     { to: "/deckupdates", label: "Deck Updates" },
-    { to: "/setreview", label: "Set Review" },
     { to: "/gamesummary", label: "Game Summary" },
+    { to: "/setreview", label: "Set Review" },
     { to: "/createdecklist", label: "Create Decklist" },
     { to: "/comparefiles", label: "Compare Files" },
     { to: "/parsemtgolog", label: "Parse Logs" },
@@ -21,6 +19,7 @@ function PageHeader() {
     const [isMenuOpen, setIsMenuOpen] = useState(false);
     const [scrolled, setScrolled] = useState(false);
     const location = useLocation();
+    const isSetReview = location.pathname.toLowerCase().includes('setreview') || location.pathname.toLowerCase().includes('commander');
 
     useEffect(() => {
         const handleScroll = () => setScrolled(window.scrollY > 20);
@@ -52,7 +51,8 @@ function PageHeader() {
             )}
         >
             <div className={cn(
-                "max-w-5xl mx-auto rounded-2xl transition-all duration-300 flex items-center justify-between",
+                "mx-auto rounded-2xl transition-all duration-300 flex items-center justify-between",
+                isSetReview ? "w-full max-w-[98%] 2xl:max-w-[1920px]" : "max-w-7xl",
                 scrolled ? "glass shadow-xl py-2 px-6" : "bg-transparent py-2 px-6"
             )}>
                 {/* Logo Section */}
@@ -63,112 +63,100 @@ function PageHeader() {
                         src={manaSymbols}
                         className="h-10 w-10 object-contain"
                         alt="Mana Symbols"
-                        title={"Home"}
                     />
-                    {/*<span className="text-xl font-bold bg-gradient-to-r from-purple-400 to-purple-600 bg-clip-text text-transparent hidden sm:block">*/}
-                    {/*    MTG Tools*/}
-                    {/*</span>*/}
+                    <motion.span
+                        whileHover={{ scale: 1.05 }}
+                        className="text-lg font-bold bg-gradient-to-r from-purple-400 via-pink-400 to-indigo-400 bg-clip-text text-transparent"
+                    >
+                        MtgTools
+                    </motion.span>
                 </Link>
 
                 {/* Desktop Navigation */}
-                <Nav className="hidden lg:flex items-center gap-1">
-                    {navLinks.map((link) => (
-                        <Link
-                            key={link.to}
-                            to={link.to}
-                            className={cn(
-                                "relative px-4 py-2 text-sm font-medium transition-colors duration-200 no-underline rounded-lg group",
-                                location.pathname === link.to
-                                    ? "text-purple-400"
-                                    : "text-slate-300 hover:text-white"
-                            )}
-                        >
-                            {link.label}
-                            {location.pathname === link.to && (
-                                <motion.div
-                                    layoutId="activeNavUnderline"
-                                    className="absolute bottom-0 left-2 right-2 h-0.5 bg-purple-500 rounded-full"
-                                />
-                            )}
-                        </Link>
-                    ))}
-                </Nav>
+                <nav className="hidden md:flex items-center gap-1">
+                    {navLinks.map((link) => {
+                        const isActive = location.pathname === link.to;
+                        return (
+                            <Link
+                                key={link.to}
+                                to={link.to}
+                                className={cn(
+                                    "px-4 py-2 rounded-xl text-sm font-medium transition-all duration-200 no-underline",
+                                    isActive
+                                        ? "text-purple-300 bg-purple-500/10 shadow-sm border border-purple-500/20"
+                                        : "text-slate-300 hover:text-white hover:bg-white/5"
+                                )}
+                            >
+                                {link.label}
+                            </Link>
+                        );
+                    })}
+                </nav>
 
-                {/* Mobile Toggle */}
+                {/* External Links */}
+                <div className="hidden lg:flex items-center gap-4">
+                    <a
+                        href="https://www.mtgnexus.com"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-2 text-xs text-slate-400 hover:text-white transition-colors no-underline"
+                    >
+                        <img src={mtgNexusLogo} alt="MtgNexus" className="h-4 w-4 rounded-full"/>
+                        <span>MtgNexus</span>
+                    </a>
+                </div>
+
+                {/* Mobile Menu Button */}
                 <button
                     onClick={() => setIsMenuOpen(!isMenuOpen)}
-                    className="lg:hidden z-50 p-2 text-purple-400 hover:bg-purple-500/10 rounded-xl transition-colors"
-                    aria-label="Toggle Menu"
+                    className="md:hidden p-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-200 transition-colors z-50"
+                    aria-label="Toggle menu"
                 >
-                    <Container>
-                        {isMenuOpen ? <X size={24} /> : <Menu size={24} />}
-                    </Container>
+                    {isMenuOpen ? <X size={20} /> : <Menu size={20} />}
                 </button>
-
-                <Link to="https://www.mtgnexus.com"
-                      target="_blank"      
-                      className="flex items-center gap-3 no-underline z-50">
-                    <motion.img
-                        whileHover={{ rotate: 360 }}
-                        transition={{ duration: 0.5 }}
-                        src={mtgNexusLogo}
-                        className="h-10 w-10 object-contain"
-                        alt="Mana Symbols"
-                        title={"MTG Nexus"}
-                    />
-                    {/*<span className="text-xl font-bold bg-gradient-to-r from-purple-400 to-purple-600 bg-clip-text text-transparent hidden sm:block">*/}
-                    {/*    MTG Tools*/}
-                    {/*</span>*/}
-                </Link>
-
-                <AnimatePresence>
-                    {isMenuOpen && (
-                        <>
-                            {/* Backdrop */}
-                            <motion.div
-                                initial={{ opacity: 0 }}
-                                animate={{ opacity: 1 }}
-                                exit={{ opacity: 0 }}
-                                onClick={() => setIsMenuOpen(false)}
-                                className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm z-40 lg:hidden"
-                            />
-
-                            {/* Drawer */}
-                            <motion.div
-                                initial={{ x: "100%" }}
-                                animate={{ x: 0 }}
-                                exit={{ x: "100%" }}
-                                transition={{ type: "spring", damping: 25, stiffness: 200 }}
-                                className="fixed top-0 right-0 bottom-0 w-80 glass border-l border-purple-500/20 z-40 lg:hidden p-6 pt-24 shadow-2xl"
-                            >
-                                <div className="flex flex-col gap-2">
-                                    {navLinks.map((link) => (
-                                        <Link
-                                            key={link.to}
-                                            to={link.to}
-                                            className={cn(
-                                                "relative px-4 py-4 text-lg font-medium transition-all duration-200 no-underline rounded-xl flex items-center justify-between group",
-                                                location.pathname === link.to
-                                                    ? "text-purple-400 bg-purple-500/10"
-                                                    : "text-slate-300 hover:text-white hover:bg-white/5"
-                                            )}
-                                        >
-                                            {link.label}
-                                            {location.pathname === link.to && (
-                                                <motion.div
-                                                    layoutId="activeNavIndicatorMobile"
-                                                    className="w-1.5 h-1.5 bg-purple-500 rounded-full"
-                                                />
-                                            )}
-                                        </Link>
-                                    ))}
-                                    
-                                </div>
-                            </motion.div>
-                        </>
-                    )}
-                </AnimatePresence>
             </div>
+
+            {/* Mobile Drawer */}
+            <AnimatePresence>
+                {isMenuOpen && (
+                    <motion.div
+                        initial={{ opacity: 0, y: -20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -20 }}
+                        className="md:hidden fixed inset-x-4 top-20 glass rounded-3xl p-6 shadow-2xl border border-white/10 flex flex-col gap-3 z-40 bg-slate-900/90 backdrop-blur-xl"
+                    >
+                        {navLinks.map((link) => {
+                            const isActive = location.pathname === link.to;
+                            return (
+                                <Link
+                                    key={link.to}
+                                    to={link.to}
+                                    className={cn(
+                                        "px-4 py-3 rounded-2xl text-base font-medium transition-all no-underline flex items-center justify-between",
+                                        isActive
+                                            ? "text-purple-300 bg-purple-500/20 font-semibold"
+                                            : "text-slate-200 hover:bg-white/5"
+                                    )}
+                                >
+                                    <span>{link.label}</span>
+                                    {isActive && <div className="w-2 h-2 rounded-full bg-purple-400" />}
+                                </Link>
+                            );
+                        })}
+                        <div className="pt-4 mt-2 border-t border-white/10 flex items-center justify-between px-2">
+                            <a
+                                href="https://www.mtgnexus.com"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="flex items-center gap-2 text-sm text-slate-400 hover:text-white transition-colors no-underline"
+                            >
+                                <img src={mtgNexusLogo} alt="MtgNexus" className="h-5 w-5 rounded-full" />
+                                <span>MtgNexus</span>
+                            </a>
+                        </div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
         </motion.header>
     );
 }

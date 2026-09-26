@@ -20,4 +20,5 @@ export const apiPaths = {
     Test: `${baseUrl}/${config.mtgtoolsendpoint}/test`,
     ParseMtgoLog: `${baseUrl}/${config.mtgtoolsendpoint}/parsemtgolog`,
     CreateDeckPicklist: `${baseUrl}/${config.mtgtoolsendpoint}/createdeckpicklist`,
+    DeckBuilderDecks: `${baseUrl}/deckbuilder/decks`,
 } as const
