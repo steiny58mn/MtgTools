@@ -1,5 +1,5 @@
 import { Link, useLocation } from "react-router-dom";
-import manaSymbols from '../assets/manasymbols.png'
+import appLogo from '../assets/app-logo.png'
 import mtgNexusLogo from '../assets/mtgnexus.jpeg'
 import { motion, AnimatePresence } from "motion/react";
 import { useState, useEffect } from "react";
@@ -9,10 +9,8 @@ const navLinks = [
     { to: "/deckupdates", label: "Deck Updates" },
     { to: "/gamesummary", label: "Game Summary" },
     { to: "/setreview", label: "Set Review" },
-    { to: "/createdecklist", label: "Create Decklist" },
     { to: "/comparefiles", label: "Compare Files" },
     { to: "/parsemtgolog", label: "Parse Logs" },
-    { to: "/createdeckpicklist", label: "Create Picklist" },
 ];
 
 function PageHeader() {
@@ -52,24 +50,23 @@ function PageHeader() {
         >
             <div className={cn(
                 "mx-auto rounded-2xl transition-all duration-300 flex items-center justify-between",
-                isSetReview ? "w-full max-w-[98%] 2xl:max-w-[1920px]" : "max-w-7xl",
+                isSetReview ? "w-full max-w-[98%] 2xl:max-w-[1920px] " : "max-w-7xl",
                 scrolled ? "glass shadow-xl py-2 px-6" : "bg-transparent py-2 px-6"
             )}>
                 {/* Logo Section */}
-                <Link to="/" className="flex items-center gap-3 no-underline z-50">
-                    <motion.img
-                        whileHover={{ rotate: 360 }}
-                        transition={{ duration: 0.5 }}
-                        src={manaSymbols}
-                        className="h-10 w-10 object-contain"
-                        alt="Mana Symbols"
-                    />
-                    <motion.span
-                        whileHover={{ scale: 1.05 }}
-                        className="text-lg font-bold bg-gradient-to-r from-purple-400 via-pink-400 to-indigo-400 bg-clip-text text-transparent"
+                <Link to="/" className="flex items-center no-underline z-50 group" title="MTG Tools" aria-label="MTG Tools">
+                    <motion.div
+                        whileHover={{ scale: 1.1, rotate: 6 }}
+                        whileTap={{ scale: 0.95 }}
+                        transition={{ type: "spring", stiffness: 400, damping: 17 }}
+                        className="relative"
                     >
-                        MtgTools
-                    </motion.span>
+                        <img
+                            src={appLogo}
+                            className="h-10 w-10 rounded-full object-cover shadow-lg border border-purple-500/40 group-hover:border-purple-400 group-hover:shadow-purple-500/30 transition-all duration-300"
+                            alt="MTG Tools"
+                        />
+                    </motion.div>
                 </Link>
 
                 {/* Desktop Navigation */}
@@ -94,16 +91,23 @@ function PageHeader() {
                 </nav>
 
                 {/* External Links */}
-                <div className="hidden lg:flex items-center gap-4">
-                    <a
+                <div className="hidden lg:flex items-center">
+                    <motion.a
+                        whileHover={{ scale: 1.1 }}
+                        whileTap={{ scale: 0.95 }}
                         href="https://www.mtgnexus.com"
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="flex items-center gap-2 text-xs text-slate-400 hover:text-white transition-colors no-underline"
+                        className="p-1 rounded-full hover:bg-white/10 transition-colors no-underline block"
+                        title="MTGNexus"
+                        aria-label="MTGNexus"
                     >
-                        <img src={mtgNexusLogo} alt="MtgNexus" className="h-4 w-4 rounded-full"/>
-                        <span>MtgNexus</span>
-                    </a>
+                        <img
+                            src={mtgNexusLogo}
+                            alt="MTGNexus"
+                            className="h-8 w-8 rounded-full object-cover border border-purple-500/30 hover:border-purple-400/60 shadow-md transition-all"
+                        />
+                    </motion.a>
                 </div>
 
                 {/* Mobile Menu Button */}

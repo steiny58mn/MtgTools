@@ -1,9 +1,7 @@
 import { motion } from "motion/react";
 import { 
-    LayoutGrid, 
     RefreshCw, 
     MessageSquare, 
-    FilePlus, 
     FileDiff, 
     Terminal, 
     BookOpen
@@ -31,12 +29,6 @@ const tools = [
         desc: "Create consolidated summaries for your games." 
     },
     { 
-        to: "/createdecklist", 
-        label: "Create Decklist", 
-        icon: FilePlus, 
-        desc: "Convert MTGO .dek files to plain text decklists." 
-    },
-    { 
         to: "/comparefiles", 
         label: "Compare Files", 
         icon: FileDiff, 
@@ -47,12 +39,6 @@ const tools = [
         label: "Parse Logs", 
         icon: Terminal, 
         desc: "Convert MTGO .dat logs into readable text." 
-    },
-    { 
-        to: "/createdeckpicklist", 
-        label: "Create Picklist", 
-        icon: LayoutGrid, 
-        desc: "Generate picklists from MTGO deck files." 
     },
 ];
 
