@@ -1,15 +1,14 @@
 import { Link, useLocation } from "react-router-dom";
-import appLogo from '../assets/app-logo.png'
-import mtgNexusLogo from '../assets/mtgnexus.jpeg'
+import appLogo from '../assets/app-logo.png';
+import mtgNexusLogo from '../assets/mtgnexus.jpeg';
 import { motion, AnimatePresence } from "motion/react";
 import { useState, useEffect } from "react";
 import { Menu, X } from "lucide-react";
 import { cn } from "../lib/utils";
+
 const navLinks = [
-    { to: "/deckupdates", label: "Deck Updates" },
-    { to: "/gamesummary", label: "Game Summary" },
     { to: "/setreview", label: "Set Review" },
-    { to: "/comparefiles", label: "Compare Files" },
+    { to: "/gamesummary", label: "Game Summary" },
     { to: "/parsemtgolog", label: "Parse Logs" },
 ];
 
@@ -17,7 +16,7 @@ function PageHeader() {
     const [isMenuOpen, setIsMenuOpen] = useState(false);
     const [scrolled, setScrolled] = useState(false);
     const location = useLocation();
-    const isSetReview = location.pathname.toLowerCase().includes('setreview') || location.pathname.toLowerCase().includes('commander');
+    const isSetReview = location.pathname.toLowerCase().includes('setreview');
 
     useEffect(() => {
         const handleScroll = () => setScrolled(window.scrollY > 20);

@@ -98,8 +98,3 @@ export interface ScryfallCard {
         };
     }>;
 }
-
-export interface CommanderDecksStorage {
-    decks: CommanderDeck[];
-    version: number;
-}

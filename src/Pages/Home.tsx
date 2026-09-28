@@ -1,8 +1,6 @@
 import { motion } from "motion/react";
 import { 
-    RefreshCw, 
     MessageSquare, 
-    FileDiff, 
     Terminal, 
     BookOpen
 } from "lucide-react";
@@ -17,22 +15,10 @@ const tools = [
         desc: "Browse sets, evaluate cards for your commander decks, and generate MTGNexus BBCode." 
     },
     { 
-        to: "/deckupdates", 
-        label: "Deck Updates", 
-        icon: RefreshCw, 
-        desc: "Generate BBCode for deck update announcements." 
-    },
-    { 
         to: "/gamesummary", 
         label: "Game Summary", 
         icon: MessageSquare, 
         desc: "Create consolidated summaries for your games." 
-    },
-    { 
-        to: "/comparefiles", 
-        label: "Compare Files", 
-        icon: FileDiff, 
-        desc: "Find differences between two deck files." 
     },
     { 
         to: "/parsemtgolog", 
@@ -98,5 +84,5 @@ export default function Home() {
                 </p>
             </footer>
         </div>
-    )
+    );
 }

@@ -1,41 +1,30 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
+import { useState, useEffect, useRef } from 'react';
+import { motion } from 'motion/react';
 import { 
     BookOpen, 
-    Search, 
     Plus, 
     Trash2, 
     Copy, 
     Check,   
-    ChevronDown, 
-    ChevronUp, 
     Layers, 
     FileText, 
     RefreshCw,
     Shield,
     RotateCcw,
-    ShoppingCart,
     Eye
 } from 'lucide-react';
 import type { CommanderDeck, DeckCardEvaluation, ScryfallCard, ScryfallSet, DeckCardItem } from '../Utilities/Interfaces';
 import { 
-    autocompleteCards,
-    getCachedAutocomplete,
     searchCommanderCards,
     getCardByName, 
     getScryfallSets,
     getCardsForSets,
-    isCardCompatibleWithDeck, 
-    getMissingColors, 
     getColorComboNickname,
     enrichDeckCardsFromScryfall
 } from '../Utilities/ScryfallService';
-import CardTagAutocompleteTextarea from '../Components/CardTagAutocompleteTextarea';
 import SetSelector from '../Components/SetSelector';
 import SetCardGrid from '../Components/SetCardGrid';
 import AddCardToDecksModal from '../Components/AddCardToDecksModal';
-import BuyListView from '../Components/BuyListView';
-import CardHoverImage from '../Components/CardHoverImage';
 import DeckCardsBreakdown from '../Components/DeckCardsBreakdown';
 import DeckVisualGalleryModal from '../Components/DeckVisualGalleryModal';
 import { apiPaths, ToolTypeCodes } from '../Utilities/Enums';
@@ -113,7 +102,7 @@ async function fetchSetReviewHeadersFromApi(colorCombo: string): Promise<Record<
 }
 
 export default function SetReview() {
-    const [activeTab, setActiveTab] = useState<'sets' | 'lookup' | 'decks' | 'summary' | 'buylist'>('sets');
+    const [activeTab, setActiveTab] = useState<'sets' | 'decks' | 'summary'>('sets');
 
     // Decks State - always kept in alphabetical order
     const [decks, setDecks] = useState<CommanderDeck[]>(() => {
@@ -129,36 +118,28 @@ export default function SetReview() {
         return [];
     });
 
-    // Guaranteed alphabetical order of decks
-    const sortedDecks = useMemo(() => {
-        return [...decks].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
-    }, [decks]);
-
-    // New Deck Form State
-    const [newDeckName, setNewDeckName] = useState('');
+    // Form inputs for creating a deck manually
     const [newCommanderName, setNewCommanderName] = useState('');
+    const [newDeckName, setNewDeckName] = useState('');
     const [newColorIdentity, setNewColorIdentity] = useState<string[]>([]);
-    const [newDeckImage, setNewDeckImage] = useState<string>('');
-    const [isSearchingCommander, setIsSearchingCommander] = useState(false);
     const [commanderCardSuggestions, setCommanderCardSuggestions] = useState<ScryfallCard[]>([]);
-    const [isImportingFromApi, setIsImportingFromApi] = useState(false);
-    const [apiImportMessage, setApiImportMessage] = useState<string | null>(null);
+    const [isSearchingCommander, setIsSearchingCommander] = useState(false);
+    const [selectedCommanderCard, setSelectedCommanderCard] = useState<ScryfallCard | null>(null);
+
+    // Collapsed decklist view id state
     const [expandedCommanderDecklistId, setExpandedCommanderDecklistId] = useState<string | null>(null);
     const [galleryModalDeck, setGalleryModalDeck] = useState<CommanderDeck | null>(null);
 
-    // Set Browsing State - persists across page refreshes
+    // Sets & Grid State
     const [sets, setSets] = useState<ScryfallSet[]>([]);
     const [selectedSetCodes, setSelectedSetCodes] = useState<string[]>(() => {
         try {
             const saved = localStorage.getItem(SETS_STORAGE_KEY);
             if (saved) {
-                const parsed = JSON.parse(saved);
-                if (Array.isArray(parsed)) {
-                    return parsed;
-                }
+                return JSON.parse(saved);
             }
         } catch (e) {
-            console.error('Failed to parse saved selected set codes:', e);
+            console.error('Failed reading selected set codes from localStorage:', e);
         }
         return [];
     });
@@ -169,7 +150,7 @@ export default function SetReview() {
                 return JSON.parse(saved);
             }
         } catch (e) {
-            console.error('Failed to parse saved includeReprints setting:', e);
+            console.error('Failed reading includeReprints setting from localStorage:', e);
         }
         return false;
     });
@@ -181,16 +162,6 @@ export default function SetReview() {
     // Modal Add Card State
     const [modalCard, setModalCard] = useState<ScryfallCard | null>(null);
     const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-
-    // Single Card Lookup State
-    const [cardSearchQuery, setCardSearchQuery] = useState('');
-    const [cardSuggestions, setCardSuggestions] = useState<string[]>([]);
-    const [selectedCard, setSelectedCard] = useState<ScryfallCard | null>(null);
-    const [isLoadingCard, setIsLoadingCard] = useState(false);
-    const [showIncompatible, setShowIncompatible] = useState(false);
-
-    // Card comments per deck when adding from single lookup
-    const [deckComments, setDeckComments] = useState<Record<string, string>>({});
 
     // Summary / BBCode State
     const [selectedDeckIdForBbCode, setSelectedDeckIdForBbCode] = useState<string>('');
@@ -214,7 +185,6 @@ export default function SetReview() {
     }, [globalReviewIntro]);
 
     const commanderDebounceRef = useRef<NodeJS.Timeout | null>(null);
-    const cardDebounceRef = useRef<NodeJS.Timeout | null>(null);
     const abortControllerRef = useRef<AbortController | null>(null);
     const setCardsCacheRef = useRef<Map<string, ScryfallCard[]>>(new Map());
     const fetchDebounceTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -226,7 +196,7 @@ export default function SetReview() {
         } catch (e) {
             console.error('Failed saving decks to localStorage:', e);
         }
-    }, [sortedDecks]);
+    }, [decks]);
 
     // Save selected set codes to localStorage whenever they change
     useEffect(() => {
@@ -298,86 +268,87 @@ export default function SetReview() {
             }
         });
 
-        // If all selected sets are already in memory, assemble and display immediately with 0 delay
+        const assembleResults = (uncachedResults: ScryfallCard[] = []) => {
+            const all: ScryfallCard[] = [];
+            selectedSetCodes.forEach(code => {
+                const cached = cachedCardsMap.get(code);
+                if (cached) {
+                    all.push(...cached);
+                } else {
+                    const fromLoaded = uncachedResults.filter(c => (c.set || '').toLowerCase() === code.toLowerCase());
+                    all.push(...fromLoaded);
+                }
+            });
+            return all;
+        };
+
         if (uncachedCodes.length === 0) {
+            if (abortControllerRef.current) {
+                abortControllerRef.current.abort();
+            }
             if (fetchDebounceTimerRef.current) {
                 clearTimeout(fetchDebounceTimerRef.current);
             }
-            const allSelectedCards: ScryfallCard[] = [];
-            selectedSetCodes.forEach(code => {
-                const list = cachedCardsMap.get(code) || [];
-                allSelectedCards.push(...list);
-            });
-            setCardsForSets(allSelectedCards);
+            setCardsForSets(assembleResults());
             setIsLoadingCards(false);
             setCardLoadProgress(null);
             return;
         }
 
-        // Immediately display any already cached sets to keep UI responsive
-        if (cachedCardsMap.size > 0) {
-            const partialCards: ScryfallCard[] = [];
-            selectedSetCodes.forEach(code => {
-                if (cachedCardsMap.has(code)) {
-                    partialCards.push(...cachedCardsMap.get(code)!);
-                }
-            });
-            setCardsForSets(partialCards);
+        const immediateInitial = assembleResults();
+        if (immediateInitial.length > 0) {
+            setCardsForSets(immediateInitial);
         }
 
-        // Debounce fetching uncached sets so rapid clicking does not stutter
         if (fetchDebounceTimerRef.current) {
             clearTimeout(fetchDebounceTimerRef.current);
         }
 
-        setIsLoadingCards(true);
-
-        fetchDebounceTimerRef.current = setTimeout(() => {
+        fetchDebounceTimerRef.current = setTimeout(async () => {
             if (abortControllerRef.current) {
                 abortControllerRef.current.abort();
             }
-            const controller = new AbortController();
-            abortControllerRef.current = controller;
+            const currentController = new AbortController();
+            abortControllerRef.current = currentController;
 
-            getCardsForSets(
-                uncachedCodes,
-                includeReprints,
-                (loaded, total) => {
-                    setCardLoadProgress({ loaded, total });
-                },
-                controller.signal
-            )
-                .then(newlyFetchedCards => {
-                    if (controller.signal.aborted) return;
+            setIsLoadingCards(true);
+            setCardLoadProgress({ loaded: 0, total: uncachedCodes.length });
 
-                    // Group newly fetched cards by set and save to cache
+            try {
+                const newCards = await getCardsForSets(
+                    uncachedCodes,
+                    includeReprints,
+                    (loaded, total) => {
+                        if (!currentController.signal.aborted) {
+                            setCardLoadProgress({ loaded, total });
+                        }
+                    },
+                    currentController.signal
+                );
+
+                if (!currentController.signal.aborted) {
                     uncachedCodes.forEach(code => {
-                        const setCards = newlyFetchedCards.filter(
-                            c => (c.set || '').toLowerCase() === code.toLowerCase()
-                        );
-                        setCardsCacheRef.current.set(`${code.toLowerCase()}_${reprintSuffix}`, setCards);
+                        const setCards = newCards.filter(c => (c.set || '').toLowerCase() === code.toLowerCase());
+                        const cacheKey = `${code.toLowerCase()}_${reprintSuffix}`;
+                        setCardsCacheRef.current.set(cacheKey, setCards);
                     });
 
-                    // Reassemble all selected sets in user-selected order
-                    const finalCards: ScryfallCard[] = [];
-                    selectedSetCodes.forEach(code => {
-                        const key = `${code.toLowerCase()}_${reprintSuffix}`;
-                        const setCards = setCardsCacheRef.current.get(key) || [];
-                        finalCards.push(...setCards);
-                    });
-
+                    const finalCards = assembleResults(newCards);
                     setCardsForSets(finalCards);
+                    setCardLoadProgress(null);
+                    setIsLoadingCards(false);
+                }
+            } catch (err: unknown) {
+                if (err instanceof Error && err.name === 'AbortError') {
+                    return;
+                }
+                console.error('Failed to load cards for sets:', err);
+                if (!currentController.signal.aborted) {
                     setIsLoadingCards(false);
                     setCardLoadProgress(null);
-                })
-                .catch(err => {
-                    if (!controller.signal.aborted) {
-                        console.error('Error loading cards for sets:', err);
-                        setIsLoadingCards(false);
-                        setCardLoadProgress(null);
-                    }
-                });
-        }, 200);
+                }
+            }
+        }, 120);
 
         return () => {
             if (fetchDebounceTimerRef.current) {
@@ -386,157 +357,175 @@ export default function SetReview() {
         };
     }, [selectedSetCodes, includeReprints]);
 
-    // Commander search autocomplete - verifies IsCommander: true via Scryfall is:commander
-    const handleCommanderInputChange = (value: string) => {
-        setNewCommanderName(value);
-        if (commanderDebounceRef.current) clearTimeout(commanderDebounceRef.current);
+    // Commander search input change - enforced is:commander
+    const handleCommanderInputChange = (val: string) => {
+        setNewCommanderName(val);
+        setSelectedCommanderCard(null);
 
-        if (value.trim().length >= 2) {
-            setIsSearchingCommander(true);
-            commanderDebounceRef.current = setTimeout(async () => {
-                const results = await searchCommanderCards(value.trim());
-                setCommanderCardSuggestions(results.slice(0, 8));
-                setIsSearchingCommander(false);
-            }, 200);
-        } else {
+        if (commanderDebounceRef.current) {
+            clearTimeout(commanderDebounceRef.current);
+        }
+
+        const trimmed = val.trim();
+        if (trimmed.length < 2) {
             setCommanderCardSuggestions([]);
             setIsSearchingCommander(false);
+            return;
         }
+
+        setIsSearchingCommander(true);
+        commanderDebounceRef.current = setTimeout(async () => {
+            const results = await searchCommanderCards(trimmed);
+            setCommanderCardSuggestions(results.slice(0, 10));
+            setIsSearchingCommander(false);
+        }, 150);
     };
 
+    // Selecting a commander card sets name, art, and color identity automatically
     const handleSelectCommanderCard = (card: ScryfallCard) => {
         setNewCommanderName(card.name);
-        setCommanderCardSuggestions([]);
-        if (!newDeckName) {
-            setNewDeckName(`${card.name} Deck`);
-        }
+        setSelectedCommanderCard(card);
         setNewColorIdentity(card.color_identity || []);
-        setNewDeckImage(card.image_uris?.art_crop || card.image_uris?.normal || card.card_faces?.[0]?.image_uris?.art_crop || '');
-    };
-
-    const handleSelectCommander = async (commanderName: string) => {
-        setNewCommanderName(commanderName);
-        setCommanderCardSuggestions([]);
-        setIsSearchingCommander(true);
-
-        const card = await getCardByName(commanderName, true);
-        if (card) {
-            if (!newDeckName) {
-                setNewDeckName(`${commanderName} Deck`);
-            }
-            setNewColorIdentity(card.color_identity || []);
-            setNewDeckImage(card.image_uris?.art_crop || card.image_uris?.normal || card.card_faces?.[0]?.image_uris?.art_crop || '');
+        if (!newDeckName.trim()) {
+            setNewDeckName(card.name);
         }
-        setIsSearchingCommander(false);
+        setCommanderCardSuggestions([]);
     };
 
-    const toggleColor = (colorCode: string) => {
-        if (colorCode === 'C') {
+    // Fallback commander selection
+    const handleSelectCommander = async (name: string) => {
+        setNewCommanderName(name);
+        setCommanderCardSuggestions([]);
+        const card = await getCardByName(name, false);
+        if (card) {
+            setSelectedCommanderCard(card);
+            setNewColorIdentity(card.color_identity || []);
+            if (!newDeckName.trim()) {
+                setNewDeckName(card.name);
+            }
+        }
+    };
+
+    // Toggle color in color identity
+    const toggleColor = (code: string) => {
+        if (code === 'C') {
             setNewColorIdentity([]);
             return;
         }
-        setNewColorIdentity(prev => {
-            const filtered = prev.filter(c => c !== 'C');
-            if (filtered.includes(colorCode)) {
-                return filtered.filter(c => c !== colorCode);
-            } else {
-                return [...filtered, colorCode];
-            }
-        });
+        setNewColorIdentity(prev => 
+            prev.includes(code)
+                ? prev.filter(c => c !== code)
+                : [...prev.filter(c => c !== 'C'), code]
+        );
     };
 
-    // Add new deck with IsCommander: true and alphabetical ordering
+    // Add new Commander Deck
     const handleAddDeck = () => {
         if (!newCommanderName.trim()) return;
 
-        const deckName = newDeckName.trim() || `${newCommanderName} Deck`;
+        const deckName = newDeckName.trim() || newCommanderName.trim();
+        const commanderImg = selectedCommanderCard?.image_uris?.art_crop 
+            || selectedCommanderCard?.image_uris?.normal 
+            || selectedCommanderCard?.card_faces?.[0]?.image_uris?.art_crop
+            || selectedCommanderCard?.card_faces?.[0]?.image_uris?.normal
+            || '';
+
         const newDeck: CommanderDeck = {
             id: `deck_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
             name: deckName,
             commanderName: newCommanderName.trim(),
             colorIdentity: newColorIdentity,
-            imageUrl: newDeckImage,
+            imageUrl: commanderImg,
             isCommander: true,
             IsCommander: true,
             cardsAdded: []
         };
 
-        setDecks(prev => {
-            const updated = [...prev, newDeck];
-            return updated.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
-        });
-        setNewDeckName('');
+        const updated = [...decks, newDeck].sort((a, b) => 
+            a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })
+        );
+
+        setDecks(updated);
         setNewCommanderName('');
+        setNewDeckName('');
         setNewColorIdentity([]);
-        setNewDeckImage('');
-        setCommanderCardSuggestions([]);
+        setSelectedCommanderCard(null);
     };
 
-    // Delete deck
-    const handleDeleteDeck = (deckId: string) => {
-        setDecks(prev => prev.filter(d => d.id !== deckId));
-    };
-
-    // Delete all existing data for decks (clear back to empty)
-    const handleDeleteAllDecks = () => {
-        if (window.confirm('Are you sure you want to delete all decks and evaluations? This will clear all data back to empty.')) {
-            setDecks([]);
-            try {
-                localStorage.removeItem(STORAGE_KEY);
-            } catch (e) {
-                console.error('Failed clearing localStorage:', e);
-            }
+    // Delete a deck
+    const handleDeleteDeck = (id: string) => {
+        setDecks(prev => prev.filter(d => d.id !== id));
+        if (selectedDeckIdForBbCode === id) {
             setSelectedDeckIdForBbCode('');
             setGeneratedBbCode('');
         }
     };
 
-    // Import decks from remote API and sort alphabetically
+    // Delete all decks
+    const handleDeleteAllDecks = () => {
+        if (window.confirm("Are you sure you want to delete all decks? This cannot be undone.")) {
+            setDecks([]);
+            setSelectedDeckIdForBbCode('');
+            setGeneratedBbCode('');
+            localStorage.removeItem(STORAGE_KEY);
+        }
+    };
+
+    // Import decks from API
+    const [isImportingFromApi, setIsImportingFromApi] = useState(false);
+    const [apiImportMessage, setApiImportMessage] = useState<string | null>(null);
+
     const handleImportFromApi = async () => {
         setIsImportingFromApi(true);
         setApiImportMessage(null);
         try {
-            const res = await fetch('https://api.frostpointlabs.com/deckbuilder/decks');
-            if (!res.ok) throw new Error(`API returned status ${res.status}`);
-            const apiDecks: any[] = await res.json();
+            const res = await fetch(apiPaths.DeckBuilderDecks);
+            if (!res.ok) {
+                throw new Error(`API error: ${res.statusText}`);
+            }
+            const data = await res.json();
+            const rawDecks = Array.isArray(data) ? data : (data.decks || data.data || []);
 
-            if (!Array.isArray(apiDecks) || apiDecks.length === 0) {
-                setApiImportMessage('No decks found at API endpoint.');
+            if (rawDecks.length === 0) {
+                setApiImportMessage('No decks found in API response.');
                 return;
             }
 
+            const updated = [...decks];
             let addedCount = 0;
             let updatedCount = 0;
-            const updated = [...decks];
 
-            for (const item of apiDecks) {
-                const deckName = item.name || item.deckName || 'Imported Deck';
-                const commander = item.commander || item.commanderName || '';
-                
-                const mappedCards: DeckCardItem[] = (item.cards || []).map((c: any) => ({
-                    id: c.cardId || c.id || `card_${Math.random().toString(36).substr(2, 6)}`,
-                    name: c.name || c.cardName || '',
-                    cmc: typeof c.cmc === 'number' ? c.cmc : (c.cmc ? parseFloat(c.cmc) : 0),
-                    manaCost: c.manaCost || '',
-                    colors: Array.isArray(c.colors) ? c.colors : [],
-                    colorIdentity: Array.isArray(c.colorIdentity) ? c.colorIdentity : [],
-                    typeLine: c.typeLine || '',
-                    imageUrl: c.imageUrl || '',
-                    quantity: typeof c.quantity === 'number' ? c.quantity : 1,
-                    category: c.category || 'main',
-                    scryfallId: c.scryfallId || ''
-                }));
+            for (const item of rawDecks) {
+                const deckName = item.deckName || item.name || 'Unnamed Deck';
+                const commander = item.commander || item.commanderName || item.commanderCard || '';
+                const existingIdx = updated.findIndex(d => 
+                    d.id === (item.deckId || item.id) || 
+                    d.name.toLowerCase() === deckName.toLowerCase()
+                );
+
+                const rawCardList: any[] = item.cards || item.deckCards || item.cardList || [];
+                const mappedCards: DeckCardItem[] = rawCardList.map((c: any, i: number) => {
+                    const cardName = (c.cardName || c.name || c.CardName || '') as string;
+                    return {
+                        id: (c.id || c.cardId || `card_${i}_${cardName}`) as string,
+                        name: cardName,
+                        cmc: Number(c.cmc || c.manaValue || 0),
+                        manaCost: (c.manaCost || c.mana_cost || '') as string,
+                        colors: (c.colors || []) as string[],
+                        colorIdentity: (c.colorIdentity || c.color_identity || []) as string[],
+                        typeLine: (c.typeLine || c.type_line || '') as string,
+                        imageUrl: (c.imageUrl || c.image_url || '') as string,
+                        quantity: Number(c.quantity || 1),
+                        category: (c.category || 'Main') as string,
+                        scryfallId: (c.scryfallId || c.scryfall_id || '') as string
+                    };
+                }).filter(c => c.name.trim().length > 0);
 
                 const enrichedMappedCards = await enrichDeckCardsFromScryfall(mappedCards);
 
-                const existingIndex = updated.findIndex(d => 
-                    d.name.toLowerCase() === deckName.toLowerCase() ||
-                    (commander && d.commanderName.toLowerCase() === commander.toLowerCase())
-                );
-
-                if (existingIndex !== -1) {
-                    const existing = updated[existingIndex];
-                    updated[existingIndex] = {
+                if (existingIdx !== -1) {
+                    const existing = updated[existingIdx];
+                    updated[existingIdx] = {
                         ...existing,
                         deckCards: enrichedMappedCards,
                         imageUrl: existing.imageUrl || item.commanderArtUrl || item.coverCardUrl || ''
@@ -578,50 +567,6 @@ export default function SetReview() {
             setTimeout(() => setApiImportMessage(null), 4000);
         } finally {
             setIsImportingFromApi(false);
-        }
-    };
-
-    // Card search autocomplete
-    const handleCardSearchChange = (value: string) => {
-        setCardSearchQuery(value);
-        if (cardDebounceRef.current) clearTimeout(cardDebounceRef.current);
-
-        const cleanVal = value.trim();
-        if (cleanVal.length >= 1) {
-            const cached = getCachedAutocomplete(cleanVal);
-            if (cached) {
-                setCardSuggestions(cached.slice(0, 8));
-                return;
-            }
-
-            cardDebounceRef.current = setTimeout(async () => {
-                const results = await autocompleteCards(cleanVal);
-                setCardSuggestions(results.slice(0, 8));
-            }, 80);
-        } else {
-            setCardSuggestions([]);
-        }
-    };
-
-    // Select card from suggestions or Enter
-    const handleSelectCard = async (cardName: string) => {
-        setCardSearchQuery(cardName);
-        setCardSuggestions([]);
-        setIsLoadingCard(true);
-
-        const card = await getCardByName(cardName, false);
-        setSelectedCard(card);
-        setIsLoadingCard(false);
-
-        if (card) {
-            const initialComments: Record<string, string> = {};
-            sortedDecks.forEach(d => {
-                const existingEval = (d.cardsAdded || []).find(c => c.cardName.toLowerCase() === card.name.toLowerCase());
-                if (existingEval) {
-                    initialComments[d.id] = existingEval.comments;
-                }
-            });
-            setDeckComments(initialComments);
         }
     };
 
@@ -682,34 +627,6 @@ export default function SetReview() {
         }));
     };
 
-    // Add card evaluation to a deck from single card lookup tab
-    const handleAddCardToDeck = (deckId: string) => {
-        if (!selectedCard) return;
-
-        const comment = deckComments[deckId] || '';
-        const newEvaluation: DeckCardEvaluation = {
-            id: `eval_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
-            cardName: selectedCard.name,
-            comments: comment,
-            colorIdentity: selectedCard.color_identity,
-            manaCost: selectedCard.mana_cost,
-            typeLine: selectedCard.type_line,
-            imageUrl: selectedCard.image_uris?.normal || selectedCard.card_faces?.[0]?.image_uris?.normal,
-            dateAdded: new Date().toLocaleDateString(),
-            isCommander: selectedCard.isCommander ?? false,
-            IsCommander: selectedCard.IsCommander ?? false
-        };
-
-        setDecks(prev => prev.map(deck => {
-            if (deck.id !== deckId) return deck;
-            const filtered = (deck.cardsAdded || []).filter(c => c.cardName.toLowerCase() !== selectedCard.name.toLowerCase());
-            return {
-                ...deck,
-                cardsAdded: [...filtered, newEvaluation]
-            };
-        }));
-    };
-
     // Remove card evaluation from a deck
     const handleRemoveCardFromDeck = (deckId: string, cardName: string) => {
         setDecks(prev => prev.map(deck => {
@@ -723,113 +640,106 @@ export default function SetReview() {
 
     // Clear all card evaluations across all decks
     const handleClearAllEvaluations = () => {
-        if (window.confirm('Are you sure you want to clear all added cards across all decks?')) {
-            setDecks(prev => prev.map(d => ({ ...d, cardsAdded: [] })));
+        const totalCount = decks.reduce((acc, d) => acc + (d.cardsAdded ? d.cardsAdded.length : 0), 0);
+        if (totalCount === 0) return;
+        if (window.confirm(`Are you sure you want to clear all ${totalCount} card evaluations from all decks? This cannot be undone.`)) {
+            setDecks(prev => prev.map(deck => ({
+                ...deck,
+                cardsAdded: []
+            })));
+            setGeneratedBbCode('');
         }
     };
 
-    /**
-     * Builds BBCode for a single deck with its specific color headers (derived from the API).
-     * Only emits color headers where cards were actually added for this commander.
-     */
-    const generateSingleDeckBbCode = async (deck: CommanderDeck): Promise<string> => {
-        if (!deck.cardsAdded || deck.cardsAdded.length === 0) return '';
 
-        const colorCombo = getColorComboNickname(deck.colorIdentity);
-        const headers = await fetchSetReviewHeadersFromApi(colorCombo);
+    // Generate BBCode for MTGNexus with dynamic API headers
+    const handleGenerateBbCode = async (deckId: string) => {
+        const deck = decks.find(d => d.id === deckId);
+        if (!deck) return;
 
-        // Group cards for this deck by color
-        const colorGroups: Record<string, DeckCardEvaluation[]> = {
-            White: [],
-            Blue: [],
-            Black: [],
-            Red: [],
-            Green: [],
-            Multicolor: [],
-            Colorless: []
-        };
-
-        for (const card of deck.cardsAdded) {
-            const cid = card.colorIdentity || [];
-            if (cid.length === 0) {
-                colorGroups.Colorless.push(card);
-            } else if (cid.length === 1) {
-                const map: Record<string, string> = { W: 'White', U: 'Blue', B: 'Black', R: 'Red', G: 'Green' };
-                const group = map[cid[0].toUpperCase()] || 'Colorless';
-                colorGroups[group].push(card);
-            } else {
-                colorGroups.Multicolor.push(card);
-            }
-        }
-
-        const colorSections: string[] = [];
-        const orderedCategories = ['White', 'Blue', 'Black', 'Red', 'Green', 'Multicolor', 'Colorless'];
-
-        for (const cat of orderedCategories) {
-            const cardsInCat = colorGroups[cat];
-            if (!cardsInCat || cardsInCat.length === 0) {
-                // Do not output header if no cards were added for this color!
-                continue;
-            }
-
-            // Sort alphabetically by card name
-            const sortedCards = [...cardsInCat].sort((a, b) => a.cardName.localeCompare(b.cardName));
-            const header = headers[cat] || `[CENTER][HEADER style=${cat === 'Multicolor' ? colorCombo : cat}][SIZE=100]${cat === 'Colorless' ? 'Colorless and Land Cards' : `${cat} Cards`}[/SIZE][/HEADER][/CENTER]`;
-
-            const cardLines = sortedCards.map(c => {
-                const commentPart = c.comments?.trim() ? ` - ${c.comments.trim()}` : '';
-                return `[[${c.cardName}]]${commentPart}`;
-            }).join('\n\n');
-
-            colorSections.push(`${header}\n${cardLines}`);
-        }
-
-        if (colorSections.length === 0) return '';
-        const deckBbCode = colorSections.join('\n');
-
-        const intro = globalReviewIntro.trim();
-        if (intro) {
-            return `${intro}\n\n${deckBbCode}`;
-        }
-        return deckBbCode;
-    };
-
-    // Generate BBCode for the currently selected deck
-    const handleGenerateBbCode = async (targetDeckId?: string) => {
         setIsGeneratingBbCode(true);
 
-        try {
-            const deckId = targetDeckId || selectedDeckIdForBbCode;
-            const targetDeck = sortedDecks.find(d => d.id === deckId);
+        const colorCombo = deck.colorIdentity.length > 0 ? deck.colorIdentity.join('') : 'C';
+        const headers = await fetchSetReviewHeadersFromApi(colorCombo);
 
-            if (!targetDeck) {
-                setGeneratedBbCode('; Please select a Commander deck above to view its BBCode.');
-                setIsGeneratingBbCode(false);
-                return;
+        const cards = deck.cardsAdded || [];
+
+        const whiteCards: DeckCardEvaluation[] = [];
+        const blueCards: DeckCardEvaluation[] = [];
+        const blackCards: DeckCardEvaluation[] = [];
+        const redCards: DeckCardEvaluation[] = [];
+        const greenCards: DeckCardEvaluation[] = [];
+        const multicolorCards: DeckCardEvaluation[] = [];
+        const colorlessCards: DeckCardEvaluation[] = [];
+
+        cards.forEach(card => {
+            const colors = card.colorIdentity || [];
+            if (colors.length > 1) {
+                multicolorCards.push(card);
+            } else if (colors.length === 0) {
+                colorlessCards.push(card);
+            } else {
+                switch (colors[0]) {
+                    case 'W': whiteCards.push(card); break;
+                    case 'U': blueCards.push(card); break;
+                    case 'B': blackCards.push(card); break;
+                    case 'R': redCards.push(card); break;
+                    case 'G': greenCards.push(card); break;
+                    default: colorlessCards.push(card); break;
+                }
             }
+        });
 
-            if (!targetDeck.cardsAdded || targetDeck.cardsAdded.length === 0) {
-                setGeneratedBbCode(`; No cards evaluated yet for ${targetDeck.name} (${targetDeck.commanderName}).`);
-                setIsGeneratingBbCode(false);
-                return;
-            }
+        const sortByName = (a: DeckCardEvaluation, b: DeckCardEvaluation) => a.cardName.localeCompare(b.cardName);
+        whiteCards.sort(sortByName);
+        blueCards.sort(sortByName);
+        blackCards.sort(sortByName);
+        redCards.sort(sortByName);
+        greenCards.sort(sortByName);
+        multicolorCards.sort(sortByName);
+        colorlessCards.sort(sortByName);
 
-            const bbCode = await generateSingleDeckBbCode(targetDeck);
-            setGeneratedBbCode(bbCode);
-        } catch (err) {
-            console.error('Error generating BBCode:', err);
-            setGeneratedBbCode('; Error generating BBCode.');
-        } finally {
-            setIsGeneratingBbCode(false);
+        const lines: string[] = [];
+
+        if (globalReviewIntro && globalReviewIntro.trim()) {
+            lines.push(globalReviewIntro.trim());
+            lines.push('');
         }
+
+        const formatSection = (headerBb: string, sectionCards: DeckCardEvaluation[]) => {
+            if (sectionCards.length === 0) return;
+            lines.push(headerBb);
+            lines.push('');
+            sectionCards.forEach(c => {
+                lines.push(`[cards]${c.cardName}[/cards] - ${c.comments}`);
+            });
+            lines.push('');
+        };
+
+        formatSection(headers.White, whiteCards);
+        formatSection(headers.Blue, blueCards);
+        formatSection(headers.Black, blackCards);
+        formatSection(headers.Red, redCards);
+        formatSection(headers.Green, greenCards);
+        formatSection(headers.Multicolor, multicolorCards);
+        formatSection(headers.Colorless, colorlessCards);
+
+        if (lines.length === 0) {
+            setGeneratedBbCode(`No card evaluations added to "${deck.name}" yet.`);
+        } else {
+            setGeneratedBbCode(lines.join('\n').trim());
+        }
+
+        setIsGeneratingBbCode(false);
     };
 
-    // Default to first deck with evaluations, or first deck overall
+    // Alphabetical decks
+    const sortedDecks = decks;
+
+    // Auto-select first deck for BBCode if none selected
     useEffect(() => {
         if (!selectedDeckIdForBbCode && sortedDecks.length > 0) {
-            const firstWithCards = sortedDecks.find(d => (d.cardsAdded || []).length > 0);
-            const initialId = firstWithCards ? firstWithCards.id : sortedDecks[0].id;
-            setSelectedDeckIdForBbCode(initialId);
+            setSelectedDeckIdForBbCode(sortedDecks[0].id);
         }
     }, [sortedDecks, selectedDeckIdForBbCode]);
 
@@ -850,28 +760,6 @@ export default function SetReview() {
 
     // Total cards evaluated
     const totalAddedCardsCount = sortedDecks.reduce((acc, d) => acc + (d.cardsAdded ? d.cardsAdded.length : 0), 0);
-
-    // Total unique cards in Buy List
-    const uniqueBuyListCount = useMemo(() => {
-        const set = new Set<string>();
-        for (const deck of sortedDecks) {
-            if (deck.cardsAdded) {
-                for (const c of deck.cardsAdded) {
-                    set.add(c.cardName.trim().toLowerCase());
-                }
-            }
-        }
-        return set.size;
-    }, [sortedDecks]);
-
-    // Filter compatible & incompatible decks for the selected single card lookup in alphabetical order
-    const compatibleDecks = selectedCard 
-        ? sortedDecks.filter(deck => isCardCompatibleWithDeck(selectedCard.color_identity, deck.colorIdentity))
-        : [];
-
-    const incompatibleDecks = selectedCard 
-        ? sortedDecks.filter(deck => !isCardCompatibleWithDeck(selectedCard.color_identity, deck.colorIdentity))
-        : [];
 
     return (
         <div className="space-y-8 p-4">
@@ -944,24 +832,6 @@ export default function SetReview() {
                         </span>
                     )}
                 </button>
-
-                <button
-                    type="button"
-                    onClick={() => setActiveTab('buylist')}
-                    className={`px-5 py-2.5 rounded-2xl text-sm font-bold transition-all flex items-center gap-2 ${
-                        activeTab === 'buylist'
-                            ? 'bg-purple-600 text-white shadow-lg shadow-purple-600/30'
-                            : 'bg-slate-900/60 text-slate-400 hover:text-white hover:bg-slate-850'
-                    }`}
-                >
-                    <ShoppingCart size={16} />
-                    <span>Buy List</span>
-                    {uniqueBuyListCount > 0 && (
-                        <span className="px-2 py-0.5 text-xs rounded-full bg-emerald-500/20 text-emerald-300 font-mono font-bold">
-                            {uniqueBuyListCount}
-                        </span>
-                    )}
-                </button>
             </div>
 
             {/* TAB 1: BROWSE SETS & ADD CARDS */}
@@ -995,267 +865,7 @@ export default function SetReview() {
                 </motion.div>
             )}
 
-            {/* TAB 2: SINGLE CARD SEARCH & MATCH */}
-            {activeTab === 'lookup' && (
-                <motion.div
-                    initial={{ opacity: 0, y: 15 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="space-y-8"
-                >
-                    {/* Search Bar */}
-                    <div className="glass rounded-[2rem] p-6 border border-purple-500/20 space-y-4">
-                        <div className="relative">
-                            <Search className="absolute left-4 top-3.5 text-purple-400" size={20} />
-                            <input
-                                type="text"
-                                value={cardSearchQuery}
-                                onChange={(e) => handleCardSearchChange(e.target.value)}
-                                onKeyDown={(e) => {
-                                    if (e.key === 'Enter' && cardSearchQuery.trim()) {
-                                        handleSelectCard(cardSearchQuery.trim());
-                                    }
-                                }}
-                                placeholder="Type any MTG card name to evaluate against your decks (e.g. Cyclonic Rift, Esper Sentinel)..."
-                                className="w-full bg-slate-950/70 border border-purple-500/20 rounded-2xl pl-12 pr-4 py-3.5 text-white text-base focus:ring-2 focus:ring-purple-500/40 outline-none transition-all placeholder:text-slate-500"
-                            />
-                            {isLoadingCard && (
-                                <RefreshCw className="absolute right-4 top-3.5 text-purple-400 animate-spin" size={20} />
-                            )}
-                        </div>
-
-                        {/* Autocomplete Suggestions */}
-                        {cardSuggestions.length > 0 && (
-                            <div className="flex flex-wrap gap-2 pt-2">
-                                {cardSuggestions.map((suggestion, sIdx) => (
-                                    <button
-                                        key={suggestion || `sugg_${sIdx}`}
-                                        type="button"
-                                        onClick={() => handleSelectCard(suggestion)}
-                                        className="px-3.5 py-1.5 rounded-xl bg-purple-950/40 hover:bg-purple-900/60 text-purple-200 text-xs border border-purple-500/20 transition-colors flex items-center gap-1.5"
-                                    >
-                                        <Plus size={12} />
-                                        <span>{suggestion}</span>
-                                    </button>
-                                ))}
-                            </div>
-                        )}
-                    </div>
-
-                    {/* Card Evaluation & Deck Matching */}
-                    {selectedCard && (
-                        <div className="space-y-6">
-                            {/* Card Details Card */}
-                            <div className="glass rounded-[2rem] p-6 border border-purple-500/20 flex flex-col md:flex-row gap-6 items-start">
-                                {selectedCard.image_uris?.normal ? (
-                                    <CardHoverImage
-                                        src={selectedCard.image_uris.normal}
-                                        popoutSrc={selectedCard.image_uris.large || selectedCard.image_uris.normal}
-                                        alt={selectedCard.name}
-                                        className="w-56 sm:w-64 rounded-2xl shadow-2xl border border-purple-500/30 mx-auto md:mx-0 shrink-0"
-                                        popoutWidth={380}
-                                    />
-                                ) : (
-                                    <div className="w-48 h-64 rounded-2xl bg-purple-900/30 border border-purple-500/20 flex items-center justify-center mx-auto md:mx-0 shrink-0">
-                                        <Shield size={48} className="text-purple-400" />
-                                    </div>
-                                )}
-
-                                <div className="space-y-4 flex-1 w-full">
-                                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-2 border-b border-purple-500/20 pb-4">
-                                        <div>
-                                            <h3 className="text-2xl font-black text-white flex items-center gap-3">
-                                                <span>{selectedCard.name}</span>
-                                                <span className="font-mono text-sm text-purple-300 font-normal">
-                                                    {selectedCard.mana_cost}
-                                                </span>
-                                            </h3>
-                                            <p className="text-slate-400 text-sm font-medium">
-                                                {selectedCard.type_line}
-                                            </p>
-                                        </div>
-                                        <div className="flex items-center gap-2">
-                                            <span className="text-xs font-mono px-3 py-1 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30">
-                                                Color Identity: {selectedCard.color_identity.length > 0 ? selectedCard.color_identity.join(', ') : 'Colorless'}
-                                            </span>
-                                        </div>
-                                    </div>
-
-                                    {selectedCard.oracle_text && (
-                                        <p className="text-sm text-slate-300 font-serif whitespace-pre-line leading-relaxed bg-slate-950/60 p-4 rounded-xl border border-purple-500/10">
-                                            {selectedCard.oracle_text}
-                                        </p>
-                                    )}
-                                </div>
-                            </div>
-
-                            {/* Compatible Decks Section */}
-                            <div className="space-y-4">
-                                <div className="flex items-center justify-between">
-                                    <h4 className="text-lg font-bold uppercase tracking-wider text-white flex items-center gap-2">
-                                        <span>Compatible Decks (Alphabetical)</span>
-                                        <span className="text-xs font-mono px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                                            {compatibleDecks.length} Match{compatibleDecks.length === 1 ? '' : 'es'}
-                                        </span>
-                                    </h4>
-                                    <span className="text-xs text-slate-400">
-                                        Only decks containing {selectedCard.color_identity.length > 0 ? selectedCard.color_identity.join(', ') : 'any color'}
-                                    </span>
-                                </div>
-
-                                {sortedDecks.length === 0 ? (
-                                    <div className="p-8 text-center glass rounded-2xl border border-purple-500/20 space-y-2">
-                                        <p className="text-sm text-slate-300">You haven't created any Commander decks yet!</p>
-                                        <p className="text-xs text-slate-500">Go to the "My Decks" tab to add your decks.</p>
-                                    </div>
-                                ) : compatibleDecks.length === 0 ? (
-                                    <div className="p-8 text-center glass rounded-2xl border border-rose-500/20 bg-rose-950/10 space-y-2">
-                                        <p className="text-sm font-bold text-rose-300">No compatible decks found</p>
-                                        <p className="text-xs text-slate-400">
-                                            None of your commander decks include all the colors required by {selectedCard.name}.
-                                        </p>
-                                    </div>
-                                ) : (
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                        {compatibleDecks.map((deck, dIdx) => {
-                                            const isAlreadyAdded = (deck.cardsAdded || []).some(
-                                                c => c.cardName.toLowerCase() === selectedCard.name.toLowerCase()
-                                            );
-                                            const colorCombo = getColorComboNickname(deck.colorIdentity);
-
-                                            return (
-                                                <motion.div
-                                                    key={deck.id || `deck_compat_${dIdx}`}
-                                                    layout
-                                                    className={`p-5 rounded-2xl border transition-all ${
-                                                        isAlreadyAdded
-                                                            ? 'bg-purple-950/30 border-purple-500/40 shadow-lg'
-                                                            : 'bg-slate-900/60 border-purple-500/15 hover:border-purple-500/30'
-                                                    }`}
-                                                >
-                                                    <div className="flex items-start justify-between gap-3 mb-3">
-                                                        <div className="flex items-center gap-3">
-                                                            {deck.imageUrl ? (
-                                                                <img
-                                                                    src={deck.imageUrl}
-                                                                    alt={deck.commanderName}
-                                                                    className="w-12 h-12 rounded-xl object-cover border border-purple-500/20 shrink-0"
-                                                                />
-                                                            ) : (
-                                                                <div className="w-12 h-12 rounded-xl bg-purple-900/30 border border-purple-500/20 flex items-center justify-center shrink-0">
-                                                                    <Shield size={20} className="text-purple-400" />
-                                                                </div>
-                                                            )}
-                                                            <div>
-                                                                <div className="flex items-center gap-2">
-                                                                    <h5 className="font-bold text-white text-base leading-snug">
-                                                                        {deck.name}
-                                                                    </h5>
-                                                                    {isAlreadyAdded && (
-                                                                        <span className="px-2 py-0.5 text-[10px] uppercase font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 rounded-md">
-                                                                            Added
-                                                                        </span>
-                                                                    )}
-                                                                </div>
-                                                                <p className="text-xs text-purple-300 font-mono">
-                                                                    {deck.commanderName} ({colorCombo})
-                                                                </p>
-                                                            </div>
-                                                        </div>
-
-                                                        <div className="flex items-center gap-2">
-                                                            {isAlreadyAdded && (
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={() => handleRemoveCardFromDeck(deck.id, selectedCard.name)}
-                                                                    className="p-2 text-rose-400 hover:text-rose-300 rounded-xl hover:bg-rose-500/10 transition-colors text-xs flex items-center gap-1"
-                                                                    title="Remove from deck"
-                                                                >
-                                                                    <Trash2 size={14} />
-                                                                </button>
-                                                            )}
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => handleAddCardToDeck(deck.id)}
-                                                                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
-                                                                    isAlreadyAdded
-                                                                        ? 'bg-purple-700/50 hover:bg-purple-700 text-purple-200'
-                                                                        : 'bg-purple-600 hover:bg-purple-500 text-white shadow-md shadow-purple-600/30'
-                                                                }`}
-                                                            >
-                                                                {isAlreadyAdded ? <Check size={14} /> : <Plus size={14} />}
-                                                                <span>{isAlreadyAdded ? 'Update Note' : 'Add to Deck'}</span>
-                                                            </button>
-                                                        </div>
-                                                    </div>
-
-                                                    {/* Deck Comments input with autocomplete */}
-                                                    <div className="space-y-1">
-                                                        <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider flex items-center justify-between">
-                                                            <span>Deck Review Notes</span>
-                                                            <span className="text-[10px] text-purple-400 font-mono lowercase">Type [[ for card links</span>
-                                                        </label>
-                                                        <CardTagAutocompleteTextarea
-                                                            value={deckComments[deck.id] || ''}
-                                                            onChange={(val) => setDeckComments(prev => ({ ...prev, [deck.id]: val }))}
-                                                            placeholder={`e.g. Cuts [[Cultivate]] for this, or upgrades the draw engine...`}
-                                                            rows={2}
-                                                        />
-                                                    </div>
-                                                </motion.div>
-                                            );
-                                        })}
-                                    </div>
-                                )}
-
-                                {/* Collapsible Incompatible Decks */}
-                                {incompatibleDecks.length > 0 && (
-                                    <div className="pt-4 border-t border-purple-500/10">
-                                        <button
-                                            type="button"
-                                            onClick={() => setShowIncompatible(!showIncompatible)}
-                                            className="text-xs font-mono uppercase tracking-wider text-slate-400 hover:text-slate-200 flex items-center gap-2 transition-colors"
-                                        >
-                                            <span>Incompatible Decks ({incompatibleDecks.length})</span>
-                                            {showIncompatible ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-                                        </button>
-
-                                        <AnimatePresence>
-                                            {showIncompatible && (
-                                                <motion.div
-                                                    initial={{ height: 0, opacity: 0 }}
-                                                    animate={{ height: 'auto', opacity: 1 }}
-                                                    exit={{ height: 0, opacity: 0 }}
-                                                    className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 mt-3 overflow-hidden text-xs"
-                                                >
-                                                    {incompatibleDecks.map((deck, dIdx) => {
-                                                        const missing = getMissingColors(selectedCard.color_identity, deck.colorIdentity);
-                                                        return (
-                                                            <div
-                                                                key={deck.id || `deck_incompat_${dIdx}`}
-                                                                className="p-3 bg-slate-950/30 rounded-xl border border-rose-500/10 flex items-center justify-between"
-                                                            >
-                                                                <div className="truncate mr-2">
-                                                                    <p className="font-bold text-slate-300 truncate">{deck.name}</p>
-                                                                    <p className="text-[11px] text-slate-500 truncate">{deck.commanderName}</p>
-                                                                </div>
-                                                                <span className="text-[10px] font-mono text-rose-400 bg-rose-950/40 px-2 py-0.5 rounded border border-rose-500/20 shrink-0">
-                                                                    Lacks: {missing.join(', ')}
-                                                                </span>
-                                                            </div>
-                                                        );
-                                                    })}
-                                                </motion.div>
-                                            )}
-                                        </AnimatePresence>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    )}
-                </motion.div>
-            )}
-
-            {/* TAB 3: MY DECKS (CRUD & MANAGEMENT) */}
+            {/* TAB 2: MY DECKS (CRUD & MANAGEMENT) */}
             {activeTab === 'decks' && (
                 <motion.div
                     initial={{ opacity: 0, y: 15 }}
@@ -1315,7 +925,7 @@ export default function SetReview() {
                                     className="w-full bg-slate-950/70 border border-purple-500/20 rounded-xl px-4 py-3 text-white text-sm focus:ring-2 focus:ring-purple-500/40 outline-none transition-all"
                                 />
                                 {isSearchingCommander && (
-                                    <span className="absolute right-3 top-9 text-xs text-purple-400 animate-spin">⟳</span>
+                                    <span className="absolute right-3 top-9 text-xs text-purple-400 animate-spin">↻</span>
                                 )}
 
                                 {/* Suggestions Dropdown with IsCommander: true badge */}
@@ -1602,7 +1212,7 @@ export default function SetReview() {
                 </motion.div>
             )}
 
-            {/* TAB 4: SET REVIEW BBCODE GENERATION */}
+            {/* TAB 3: SET REVIEW BBCODE GENERATION */}
             {activeTab === 'summary' && (
                 <motion.div
                     initial={{ opacity: 0, y: 15 }}
@@ -1618,14 +1228,6 @@ export default function SetReview() {
                                     Click on a Commander deck below to view and copy its specific Set Review BBCode with API color headers.
                                 </p>
                             </div>
-                            <button
-                                type="button"
-                                onClick={() => setActiveTab('buylist')}
-                                className="px-4 py-2 bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/40 text-emerald-300 rounded-xl text-xs font-mono font-bold flex items-center gap-1.5 transition-all shadow-sm"
-                            >
-                                <ShoppingCart size={14} />
-                                <span>Generate Buy List ({uniqueBuyListCount})</span>
-                            </button>
                         </div>
 
                         {/* Global Review Intro Textbox */}
@@ -1748,19 +1350,6 @@ export default function SetReview() {
                             placeholder="Select a commander above to view its BBCode..."
                         />
                     </div>
-                </motion.div>
-            )}
-
-            {/* TAB 5: BUY LIST */}
-            {activeTab === 'buylist' && (
-                <motion.div
-                    initial={{ opacity: 0, y: 15 }}
-                    animate={{ opacity: 1, y: 0 }}
-                >
-                    <BuyListView
-                        decks={sortedDecks}
-                        onNavigateToBrowse={() => setActiveTab('sets')}
-                    />
                 </motion.div>
             )}
 
