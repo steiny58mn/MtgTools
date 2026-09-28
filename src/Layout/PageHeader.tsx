@@ -7,7 +7,7 @@ import { Menu, X } from "lucide-react";
 import { cn } from "../lib/utils";
 
 const navLinks = [
-    { to: "/setreview", label: "Set Review" },
+    { to: "/setreview",  label: "Set Review" },
     { to: "/gamesummary", label: "Game Summary" },
     { to: "/parsemtgolog", label: "Parse Logs" },
 ];
