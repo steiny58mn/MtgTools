@@ -6,12 +6,17 @@ export const ToolTypeCodes = {
 } as const;
 
 const rawBaseUrl = import.meta.env.VITE_API_URL || (import.meta.env.PROD ? config.remoteurl : (config.localurl || config.url));
-const baseUrl = rawBaseUrl.replace(/\/+$/, '');
+export const apiBaseUrl = rawBaseUrl.replace(/\/+$/, '');
 
 export const apiPaths = {
-    Root: `${baseUrl}/${config.mtgtoolsendpoint}`,
-    GetBbCode: `${baseUrl}/${config.mtgtoolsendpoint}/getbbcode`,
-    DeckColors: `${baseUrl}/${config.mtgtoolsendpoint}/deckcolors`,
-    ParseMtgoLog: `${baseUrl}/${config.mtgtoolsendpoint}/parsemtgolog`,
-    DeckBuilderDecks: `${baseUrl}/deckbuilder/decks`,
+    Root: `${apiBaseUrl}/${config.mtgtoolsendpoint}`,
+    GetBbCode: `${apiBaseUrl}/${config.mtgtoolsendpoint}/getbbcode`,
+    DeckColors: `${apiBaseUrl}/${config.mtgtoolsendpoint}/deckcolors`,
+    ParseMtgoLog: `${apiBaseUrl}/${config.mtgtoolsendpoint}/parsemtgolog`,
+    DeckBuilderDecks: `${apiBaseUrl}/deckbuilder/decks`,
+    SecurityLogin: `${apiBaseUrl}/security/login`,
+    SecurityGoogleLogin: `${apiBaseUrl}/security/google-login`,
+    SecurityRegister: `${apiBaseUrl}/security/register`,
+    SecurityValidate: `${apiBaseUrl}/security/validate`,
+    SecurityUsers: `${apiBaseUrl}/security/users`,
 } as const;

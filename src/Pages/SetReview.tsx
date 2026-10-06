@@ -11,8 +11,11 @@ import {
     RefreshCw,
     Shield,
     RotateCcw,
-    Eye
+    Eye,
+    User
 } from 'lucide-react';
+import { useAuth, AuthService } from '../Utilities/AuthService';
+import AuthModal from '../Components/AuthModal';
 import type { CommanderDeck, DeckCardEvaluation, ScryfallCard, ScryfallSet, DeckCardItem } from '../Utilities/Interfaces';
 import { 
     searchCommanderCards,
@@ -103,6 +106,20 @@ async function fetchSetReviewHeadersFromApi(colorCombo: string): Promise<Record<
 
 export default function SetReview() {
     const [activeTab, setActiveTab] = useState<'sets' | 'decks' | 'summary'>('sets');
+
+    // Authentication & Deckbuilder User State
+    const { user, isLoggedIn, savedUsername, setSavedUsername } = useAuth();
+    const [importUsername, setImportUsername] = useState(() => user?.username || savedUsername || '');
+    const [isSetReviewAuthModalOpen, setIsSetReviewAuthModalOpen] = useState(false);
+    const [showUserOverride, setShowUserOverride] = useState(false);
+
+    useEffect(() => {
+        if (user?.username) {
+            setImportUsername(user.username);
+        } else if (savedUsername) {
+            setImportUsername(savedUsername);
+        }
+    }, [user, savedUsername]);
 
     // Decks State - always kept in alphabetical order
     const [decks, setDecks] = useState<CommanderDeck[]>(() => {
@@ -476,10 +493,26 @@ export default function SetReview() {
     const [apiImportMessage, setApiImportMessage] = useState<string | null>(null);
 
     const handleImportFromApi = async () => {
+        const targetUser = (importUsername || user?.username || savedUsername || '').trim();
+        if (!targetUser && !isLoggedIn) {
+            setApiImportMessage('Please enter your Deck Builder username or log in to import your decks.');
+            setShowUserOverride(true);
+            return;
+        }
+
         setIsImportingFromApi(true);
         setApiImportMessage(null);
         try {
-            const res = await fetch(apiPaths.DeckBuilderDecks);
+            const url = targetUser
+                ? `${apiPaths.DeckBuilderDecks}?username=${encodeURIComponent(targetUser)}`
+                : apiPaths.DeckBuilderDecks;
+
+            const headers = AuthService.getAuthHeaders();
+            if (targetUser) {
+                headers['X-Username'] = targetUser;
+            }
+
+            const res = await fetch(url, { headers });
             if (!res.ok) {
                 throw new Error(`API error: ${res.statusText}`);
             }
@@ -487,8 +520,16 @@ export default function SetReview() {
             const rawDecks = Array.isArray(data) ? data : (data.decks || data.data || []);
 
             if (rawDecks.length === 0) {
-                setApiImportMessage('No decks found in API response.');
+                setApiImportMessage(
+                    targetUser
+                        ? `No decks found for user "${targetUser}". Check username or ensure decks are created in MTG Deck Builder.`
+                        : 'No decks found in API response.'
+                );
                 return;
+            }
+
+            if (targetUser) {
+                setSavedUsername(targetUser);
             }
 
             const updated = [...decks];
@@ -559,12 +600,13 @@ export default function SetReview() {
 
             updated.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
             setDecks(updated);
-            setApiImportMessage(`Successfully imported ${addedCount} new deck(s) and synced ${updatedCount} existing deck(s) with cards!`);
-            setTimeout(() => setApiImportMessage(null), 4000);
-        } catch (err) {
+            setApiImportMessage(`Successfully imported ${addedCount} new deck(s) and synced ${updatedCount} existing deck(s) for @${targetUser || user?.username || 'user'}!`);
+            setTimeout(() => setApiImportMessage(null), 5000);
+        } catch (err: unknown) {
             console.error('Import from API failed:', err);
-            setApiImportMessage('Failed to import decks from API.');
-            setTimeout(() => setApiImportMessage(null), 4000);
+            const msg = err instanceof Error ? err.message : 'Failed to import decks from API.';
+            setApiImportMessage(msg);
+            setTimeout(() => setApiImportMessage(null), 5000);
         } finally {
             setIsImportingFromApi(false);
         }
@@ -874,7 +916,7 @@ export default function SetReview() {
                 >
                     {/* Add / Import Section */}
                     <div className="glass rounded-[2rem] p-6 border border-purple-500/20 space-y-6">
-                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-purple-500/20 pb-4">
+                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-purple-500/20 pb-4">
                             <div>
                                 <h3 className="text-xl font-black uppercase text-white">Create or Import Commander Deck</h3>
                                 <p className="text-xs text-slate-400">
@@ -882,15 +924,70 @@ export default function SetReview() {
                                 </p>
                             </div>
 
-                            <button
-                                type="button"
-                                onClick={handleImportFromApi}
-                                disabled={isImportingFromApi}
-                                className="px-4 py-2 bg-purple-950/50 hover:bg-purple-900/60 border border-purple-500/30 text-purple-200 rounded-xl text-xs font-bold transition-all flex items-center gap-2 self-start sm:self-auto shrink-0"
-                            >
-                                <RefreshCw size={14} className={isImportingFromApi ? 'animate-spin' : ''} />
-                                <span>{isImportingFromApi ? 'Importing Decks...' : 'Import Decks'}</span>
-                            </button>
+                            {/* Deck Import Controls: User pill / Input + Import button */}
+                            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
+                                {isLoggedIn && user && !showUserOverride ? (
+                                    <div className="flex items-center gap-2 bg-purple-950/40 border border-purple-500/30 rounded-xl px-3 py-1.5 text-xs text-purple-200">
+                                        <div className="w-5 h-5 rounded-full bg-purple-500/30 flex items-center justify-center text-[10px] font-bold text-purple-200">
+                                            {user.username.charAt(0).toUpperCase()}
+                                        </div>
+                                        <span>User: <strong className="text-white">@{user.username}</strong></span>
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowUserOverride(true)}
+                                            className="text-[10px] text-purple-400 hover:text-purple-300 underline ml-1 cursor-pointer"
+                                            title="Import decks for another user"
+                                        >
+                                            Switch
+                                        </button>
+                                    </div>
+                                ) : (
+                                    <div className="flex items-center gap-1.5 bg-slate-950/60 border border-purple-500/20 rounded-xl px-2.5 py-1 text-xs">
+                                        <User size={13} className="text-slate-400 shrink-0" />
+                                        <input
+                                            type="text"
+                                            value={importUsername}
+                                            onChange={(e) => setImportUsername(e.target.value)}
+                                            onKeyDown={(e) => {
+                                                if (e.key === 'Enter') handleImportFromApi();
+                                            }}
+                                            placeholder="Deckbuilder username..."
+                                            className="bg-transparent border-none text-white text-xs outline-none w-36 sm:w-40 placeholder:text-slate-500"
+                                        />
+                                        {!isLoggedIn && (
+                                            <button
+                                                type="button"
+                                                onClick={() => setIsSetReviewAuthModalOpen(true)}
+                                                className="text-[10px] text-purple-400 hover:text-purple-300 font-semibold px-1.5 py-0.5 rounded bg-purple-950/50 hover:bg-purple-900/50 border border-purple-500/30 shrink-0 transition-colors cursor-pointer"
+                                            >
+                                                Log In
+                                            </button>
+                                        )}
+                                        {showUserOverride && isLoggedIn && (
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setShowUserOverride(false);
+                                                    if (user?.username) setImportUsername(user.username);
+                                                }}
+                                                className="text-[10px] text-slate-400 hover:text-white shrink-0 ml-1 cursor-pointer"
+                                            >
+                                                Cancel
+                                            </button>
+                                        )}
+                                    </div>
+                                )}
+
+                                <button
+                                    type="button"
+                                    onClick={handleImportFromApi}
+                                    disabled={isImportingFromApi}
+                                    className="px-4 py-2 bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-purple-600/30 flex items-center justify-center gap-2 shrink-0 cursor-pointer"
+                                >
+                                    <RefreshCw size={14} className={isImportingFromApi ? 'animate-spin' : ''} />
+                                    <span>{isImportingFromApi ? 'Importing Decks...' : 'Import Decks'}</span>
+                                </button>
+                            </div>
                         </div>
 
                         {apiImportMessage && (
@@ -1368,6 +1465,12 @@ export default function SetReview() {
                 isOpen={Boolean(galleryModalDeck)}
                 onClose={() => setGalleryModalDeck(null)}
                 deck={galleryModalDeck}
+            />
+
+            {/* Set Review Auth Modal */}
+            <AuthModal
+                isOpen={isSetReviewAuthModalOpen}
+                onClose={() => setIsSetReviewAuthModalOpen(false)}
             />
         </div>
     );
