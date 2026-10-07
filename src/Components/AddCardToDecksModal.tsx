@@ -429,6 +429,7 @@ export default function AddCardToDecksModal({
                                         const cardsAlreadyInDeck = deck.cardsAdded || [];
                                         const isCardsExpanded = Boolean(expandedDeckCards[deck.id]);
                                         const isDecklistExpanded = Boolean(expandedDecklists[deck.id]);
+                                        const cleanDeckCards = (deck.deckCards || []).filter(c => !(c.category || '').toLowerCase().includes('maybe'));
 
                                         return (
                                             <div
@@ -507,7 +508,7 @@ export default function AddCardToDecksModal({
                                                                 </button>
                                                             )}
 
-                                                            {deck.deckCards && deck.deckCards.length > 0 && (
+                                                            {cleanDeckCards.length > 0 && (
                                                                 <div className="flex items-center gap-1">
                                                                     <button
                                                                         type="button"
@@ -518,10 +519,10 @@ export default function AddCardToDecksModal({
                                                                                 ? 'bg-indigo-600/30 text-indigo-200 border-indigo-500/40 shadow-sm'
                                                                                 : 'bg-slate-900/80 text-slate-300 hover:text-white border-indigo-500/20 hover:border-indigo-500/40 hover:bg-slate-800'
                                                                         }`}
-                                                                        title={isDecklistExpanded ? `Hide deck cards for ${deck.name}` : `View ${deck.deckCards.length} deck cards for ${deck.name}`}
+                                                                        title={isDecklistExpanded ? `Hide deck cards for ${deck.name}` : `View ${cleanDeckCards.length} deck cards for ${deck.name}`}
                                                                     >
                                                                         <Layers size={11} className="text-indigo-400" />
-                                                                        <span>{deck.deckCards.length} in deck</span>
+                                                                        <span>{cleanDeckCards.length} in deck</span>
                                                                         {isDecklistExpanded ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
                                                                     </button>
 
@@ -625,7 +626,7 @@ export default function AddCardToDecksModal({
                                                     </div>
 
                                                     {/* Collapsible panel of full decklist cards from MtgDeckbuilder */}
-                                                    {deck.deckCards && deck.deckCards.length > 0 && (
+                                                    {cleanDeckCards.length > 0 && (
                                                         <AnimatePresence>
                                                             {isDecklistExpanded && (
                                                                 <motion.div
@@ -636,7 +637,7 @@ export default function AddCardToDecksModal({
                                                                     className="overflow-hidden pt-1"
                                                                 >
                                                                     <DeckCardsBreakdown
-                                                                        cards={deck.deckCards}
+                                                                        cards={cleanDeckCards}
                                                                         deck={deck}
                                                                         deckName={deck.name}
                                                                         maxHeightClass="max-h-60"

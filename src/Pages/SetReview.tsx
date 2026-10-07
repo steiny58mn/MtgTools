@@ -127,7 +127,15 @@ export default function SetReview() {
             const saved = localStorage.getItem(STORAGE_KEY);
             if (saved) {
                 const parsed: CommanderDeck[] = JSON.parse(saved);
-                return parsed.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
+                const sanitized = parsed.map(deck => {
+                    if (!deck.deckCards) return deck;
+                    const cleanedCards = deck.deckCards.filter(c => {
+                        const cat = (c.category || '').toLowerCase().trim();
+                        return !cat.includes('maybe');
+                    });
+                    return { ...deck, deckCards: cleanedCards };
+                });
+                return sanitized.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
             }
         } catch (e) {
             console.error('Failed reading decks from localStorage:', e);
@@ -545,8 +553,45 @@ export default function SetReview() {
                 );
 
                 const rawCardList: any[] = item.cards || item.deckCards || item.cardList || [];
-                const mappedCards: DeckCardItem[] = rawCardList.map((c: any, i: number) => {
-                    const cardName = (c.cardName || c.name || c.CardName || '') as string;
+
+                // Filter out maybeboard cards and ensure only commander, mainboard, and sideboard cards are kept
+                const isAllowedBoard = (c: any) => {
+                    const rawCat = (c.category || c.Category || c.board || c.Board || '').toString().toLowerCase().trim();
+                    // Explicitly reject maybeboard
+                    if (rawCat.includes('maybe')) {
+                        return false;
+                    }
+                    // Commander is allowed
+                    if (Boolean(c.isCommander || c.IsCommander) || rawCat.includes('cmdr') || rawCat.includes('commander')) {
+                        return true;
+                    }
+                    // Sideboard is allowed
+                    if (rawCat.includes('side')) {
+                        return true;
+                    }
+                    // Mainboard is allowed (default if category empty or 'main'/'deck')
+                    if (rawCat.includes('main') || rawCat === '' || rawCat === 'deck') {
+                        return true;
+                    }
+                    return false;
+                };
+
+                const normalizeCategory = (c: any, isCmdr: boolean): string => {
+                    if (isCmdr) return 'Commander';
+                    const rawCat = (c.category || c.Category || c.board || c.Board || '').toString().toLowerCase().trim();
+                    if (rawCat.includes('side')) return 'Sideboard';
+                    return 'Main';
+                };
+
+                const filteredRawCards = rawCardList.filter(isAllowedBoard);
+
+                const mappedCards: DeckCardItem[] = filteredRawCards.map((c: any, i: number) => {
+                    const cardName = ((c.cardName || c.name || c.CardName || '') as string).trim();
+                    const isCmdr = Boolean(c.isCommander || c.IsCommander) || 
+                        (c.category || c.Category || c.board || c.Board || '').toString().toLowerCase().includes('commander') ||
+                        Boolean(commander.length > 0 && cardName.toLowerCase() === commander.toLowerCase());
+                    const category = normalizeCategory(c, isCmdr);
+
                     return {
                         id: (c.id || c.cardId || `card_${i}_${cardName}`) as string,
                         name: cardName,
@@ -557,10 +602,31 @@ export default function SetReview() {
                         typeLine: (c.typeLine || c.type_line || '') as string,
                         imageUrl: (c.imageUrl || c.image_url || '') as string,
                         quantity: Number(c.quantity || 1),
-                        category: (c.category || 'Main') as string,
-                        scryfallId: (c.scryfallId || c.scryfall_id || '') as string
+                        category: category,
+                        scryfallId: (c.scryfallId || c.scryfall_id || '') as string,
+                        isCommander: isCmdr,
+                        IsCommander: isCmdr
                     };
                 }).filter(c => c.name.trim().length > 0);
+
+                // Ensure the Commander is always present in the deck cards if specified
+                if (commander && !mappedCards.some(c => c.isCommander || c.name.toLowerCase() === commander.toLowerCase())) {
+                    mappedCards.unshift({
+                        id: `commander_${item.deckId || item.id || Date.now()}_${commander.replace(/\s+/g, '_')}`,
+                        name: commander,
+                        cmc: 0,
+                        manaCost: '',
+                        colors: (Array.isArray(item.commanderColorIdentity) ? item.commanderColorIdentity : []) as string[],
+                        colorIdentity: (Array.isArray(item.commanderColorIdentity) ? item.commanderColorIdentity : []) as string[],
+                        typeLine: 'Legendary Creature',
+                        imageUrl: item.commanderArtUrl || item.coverCardUrl || '',
+                        quantity: 1,
+                        category: 'Commander',
+                        scryfallId: '',
+                        isCommander: true,
+                        IsCommander: true
+                    });
+                }
 
                 const enrichedMappedCards = await enrichDeckCardsFromScryfall(mappedCards);
 
@@ -1251,44 +1317,49 @@ export default function SetReview() {
                                         </div>
 
                                         {/* Imported Deck Cards (MtgDeckbuilder) */}
-                                        {deck.deckCards && deck.deckCards.length > 0 && (
-                                            <div className="space-y-2 pt-2 border-t border-purple-500/10">
-                                                <div className="flex items-center gap-1.5">
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => setExpandedCommanderDecklistId(prev => prev === deck.id ? null : deck.id)}
-                                                        className="flex-1 flex items-center justify-between text-xs px-2.5 py-1.5 rounded-lg bg-indigo-950/40 hover:bg-indigo-900/50 border border-indigo-500/30 text-indigo-200 transition-colors cursor-pointer"
-                                                    >
-                                                        <span className="flex items-center gap-1.5 font-medium">
-                                                            <Layers size={13} className="text-indigo-400" />
-                                                            <span>Deck Cards</span>
-                                                        </span>
-                                                        <span className="font-mono text-[11px] font-bold text-indigo-300">
-                                                            {deck.deckCards.length} cards {expandedCommanderDecklistId === deck.id ? '▲' : '▼'}
-                                                        </span>
-                                                    </button>
+                                        {(() => {
+                                            const cleanDeckCards = (deck.deckCards || []).filter(c => !(c.category || '').toLowerCase().includes('maybe'));
+                                            if (cleanDeckCards.length === 0) return null;
 
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => setGalleryModalDeck(deck)}
-                                                        className="px-2.5 py-1.5 rounded-lg bg-indigo-600/25 hover:bg-indigo-600/40 border border-indigo-500/35 text-indigo-200 hover:text-white text-xs font-mono font-medium flex items-center gap-1.5 transition-colors cursor-pointer shadow-sm shrink-0"
-                                                        title={`Open full visual card gallery for ${deck.name} to view and read all cards in a grid`}
-                                                    >
-                                                        <Eye size={12} className="text-indigo-400" />
-                                                        <span>Visual Grid</span>
-                                                    </button>
+                                            return (
+                                                <div className="space-y-2 pt-2 border-t border-purple-500/10">
+                                                    <div className="flex items-center gap-1.5">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setExpandedCommanderDecklistId(prev => prev === deck.id ? null : deck.id)}
+                                                            className="flex-1 flex items-center justify-between text-xs px-2.5 py-1.5 rounded-lg bg-indigo-950/40 hover:bg-indigo-900/50 border border-indigo-500/30 text-indigo-200 transition-colors cursor-pointer"
+                                                        >
+                                                            <span className="flex items-center gap-1.5 font-medium">
+                                                                <Layers size={13} className="text-indigo-400" />
+                                                                <span>Deck Cards</span>
+                                                            </span>
+                                                            <span className="font-mono text-[11px] font-bold text-indigo-300">
+                                                                {cleanDeckCards.length} cards {expandedCommanderDecklistId === deck.id ? '▲' : '▼'}
+                                                            </span>
+                                                        </button>
+
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setGalleryModalDeck({ ...deck, deckCards: cleanDeckCards })}
+                                                            className="px-2.5 py-1.5 rounded-lg bg-indigo-600/25 hover:bg-indigo-600/40 border border-indigo-500/35 text-indigo-200 hover:text-white text-xs font-mono font-medium flex items-center gap-1.5 transition-colors cursor-pointer shadow-sm shrink-0"
+                                                            title={`Open full visual card gallery for ${deck.name} to view and read all cards in a grid`}
+                                                        >
+                                                            <Eye size={12} className="text-indigo-400" />
+                                                            <span>Visual Grid</span>
+                                                        </button>
+                                                    </div>
+
+                                                    {expandedCommanderDecklistId === deck.id && (
+                                                        <DeckCardsBreakdown
+                                                            cards={cleanDeckCards}
+                                                            deck={deck}
+                                                            deckName={deck.name}
+                                                            maxHeightClass="max-h-64"
+                                                        />
+                                                    )}
                                                 </div>
-
-                                                {expandedCommanderDecklistId === deck.id && (
-                                                    <DeckCardsBreakdown
-                                                        cards={deck.deckCards}
-                                                        deck={deck}
-                                                        deckName={deck.name}
-                                                        maxHeightClass="max-h-64"
-                                                    />
-                                                )}
-                                            </div>
-                                        )}
+                                            );
+                                        })()}
 
                                         {/* Bottom Action */}
                                         <div className="pt-2 border-t border-purple-500/10 flex justify-end">

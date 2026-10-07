@@ -48,10 +48,38 @@ export const DeckVisualGalleryModal: React.FC<DeckVisualGalleryModalProps> = ({
     const [searchQuery, setSearchQuery] = useState('');
     const [cardSize, setCardSize] = useState<CardSize>('medium');
     const [selectedCategory, setSelectedCategory] = useState<string>('all');
+    const [selectedBoard, setSelectedBoard] = useState<'all' | 'commander' | 'main' | 'sideboard'>('all');
     const [recentlyAddedCard, setRecentlyAddedCard] = useState<string | null>(null);
 
+    // Filter cards to strictly exclude Maybeboard and ensure Commander is present
     const initialCards = useMemo(() => {
-        return customCards || deck?.deckCards || [];
+        const raw = customCards || deck?.deckCards || [];
+        const filtered = raw.filter(c => {
+            const cat = (c.category || '').toLowerCase().trim();
+            return !cat.includes('maybe');
+        });
+
+        const cmdrName = (deck?.commanderName || '').trim();
+        if (cmdrName && !filtered.some(c => 
+            c.name.toLowerCase() === cmdrName.toLowerCase() || 
+            Boolean(c.isCommander || c.IsCommander) || 
+            (c.category || '').toLowerCase().includes('commander')
+        )) {
+            const commanderCard: DeckCardItem = {
+                id: `cmdr_${deck?.id || 'main'}_${cmdrName.replace(/\s+/g, '_')}`,
+                name: cmdrName,
+                cmc: 0,
+                quantity: 1,
+                category: 'Commander',
+                isCommander: true,
+                IsCommander: true,
+                imageUrl: deck?.imageUrl || '',
+                colorIdentity: deck?.colorIdentity || [],
+                colors: deck?.colorIdentity || []
+            };
+            return [commanderCard, ...filtered];
+        }
+        return filtered;
     }, [customCards, deck]);
 
     const [enrichedCards, setEnrichedCards] = useState<DeckCardItem[]>(initialCards);
@@ -98,15 +126,50 @@ export const DeckVisualGalleryModal: React.FC<DeckVisualGalleryModalProps> = ({
         if (isOpen) {
             setSearchQuery('');
             setSelectedCategory('all');
+            setSelectedBoard('all');
         }
     }, [isOpen]);
 
-    // Filter cards by name search
+    const isCommanderCard = (c: DeckCardItem) => {
+        return Boolean(c.isCommander || c.IsCommander) || 
+            (c.category || '').toLowerCase().includes('commander') ||
+            Boolean(deck?.commanderName && c.name.toLowerCase() === deck.commanderName.toLowerCase());
+    };
+
+    const isSideboardCard = (c: DeckCardItem) => {
+        return (c.category || '').toLowerCase().includes('side');
+    };
+
+    const commanderCount = useMemo(() => {
+        return enrichedCards.filter(isCommanderCard).length;
+    }, [enrichedCards, deck]);
+
+    const sideboardCount = useMemo(() => {
+        return enrichedCards.filter(isSideboardCard).length;
+    }, [enrichedCards]);
+
+    const mainboardCount = useMemo(() => {
+        return enrichedCards.filter(c => !isCommanderCard(c) && !isSideboardCard(c)).length;
+    }, [enrichedCards, deck]);
+
+    // Filter cards by board and name search
     const filteredCards = useMemo(() => {
-        if (!searchQuery.trim()) return enrichedCards;
-        const q = searchQuery.toLowerCase().trim();
-        return enrichedCards.filter(c => c.name.toLowerCase().includes(q));
-    }, [enrichedCards, searchQuery]);
+        let result = enrichedCards;
+
+        if (selectedBoard === 'commander') {
+            result = result.filter(isCommanderCard);
+        } else if (selectedBoard === 'sideboard') {
+            result = result.filter(isSideboardCard);
+        } else if (selectedBoard === 'main') {
+            result = result.filter(c => !isCommanderCard(c) && !isSideboardCard(c));
+        }
+
+        if (searchQuery.trim()) {
+            const q = searchQuery.toLowerCase().trim();
+            result = result.filter(c => c.name.toLowerCase().includes(q));
+        }
+        return result;
+    }, [enrichedCards, selectedBoard, searchQuery, deck]);
 
     // Group by Color -> Alphabetical, Lands strictly last and separate
     const groupedCategories: GroupedDeckCategory[] = useMemo(() => {
@@ -275,10 +338,67 @@ export const DeckVisualGalleryModal: React.FC<DeckVisualGalleryModalProps> = ({
                         </div>
                     </div>
 
-                    {/* Category Filter Chips Bar */}
-                    <div className="px-4 sm:px-6 py-2 bg-slate-950/90 border-b border-indigo-500/15 flex items-center gap-1.5 overflow-x-auto scrollbar-none shrink-0">
+                    {/* Filter Chips Bar (Board & Color Category) */}
+                    <div className="px-4 sm:px-6 py-2 bg-slate-950/90 border-b border-indigo-500/15 flex items-center gap-2 overflow-x-auto scrollbar-none shrink-0 flex-wrap">
+                        {/* Board selector */}
+                        {(sideboardCount > 0 || commanderCount > 0) && (
+                            <div className="flex items-center gap-1 shrink-0 pr-3 border-r border-indigo-500/20">
+                                <span className="text-[10px] font-mono text-slate-400 uppercase tracking-wider mr-1 shrink-0">
+                                    Board:
+                                </span>
+                                <button
+                                    type="button"
+                                    onClick={() => setSelectedBoard('all')}
+                                    className={`px-2.5 py-1 rounded-lg text-xs font-medium font-mono shrink-0 transition-all border ${
+                                        selectedBoard === 'all'
+                                            ? 'bg-indigo-600 text-white border-indigo-400 shadow-sm'
+                                            : 'bg-slate-900/80 text-slate-300 border-indigo-500/20 hover:bg-slate-800 hover:text-white'
+                                    }`}
+                                >
+                                    All ({enrichedCards.length})
+                                </button>
+                                {commanderCount > 0 && (
+                                    <button
+                                        type="button"
+                                        onClick={() => setSelectedBoard('commander')}
+                                        className={`px-2.5 py-1 rounded-lg text-xs font-medium font-mono shrink-0 transition-all border ${
+                                            selectedBoard === 'commander'
+                                                ? 'bg-amber-600 text-amber-100 border-amber-400 shadow-sm'
+                                                : 'bg-slate-900/80 text-slate-300 border-indigo-500/20 hover:bg-slate-800 hover:text-amber-300'
+                                        }`}
+                                    >
+                                        Cmdr ({commanderCount})
+                                    </button>
+                                )}
+                                <button
+                                    type="button"
+                                    onClick={() => setSelectedBoard('main')}
+                                    className={`px-2.5 py-1 rounded-lg text-xs font-medium font-mono shrink-0 transition-all border ${
+                                        selectedBoard === 'main'
+                                            ? 'bg-indigo-600 text-white border-indigo-400 shadow-sm'
+                                            : 'bg-slate-900/80 text-slate-300 border-indigo-500/20 hover:bg-slate-800 hover:text-white'
+                                    }`}
+                                >
+                                    Main ({mainboardCount})
+                                </button>
+                                {sideboardCount > 0 && (
+                                    <button
+                                        type="button"
+                                        onClick={() => setSelectedBoard('sideboard')}
+                                        className={`px-2.5 py-1 rounded-lg text-xs font-medium font-mono shrink-0 transition-all border ${
+                                            selectedBoard === 'sideboard'
+                                                ? 'bg-sky-600 text-sky-100 border-sky-400 shadow-sm'
+                                                : 'bg-slate-900/80 text-slate-300 border-indigo-500/20 hover:bg-slate-800 hover:text-sky-300'
+                                        }`}
+                                    >
+                                        Side ({sideboardCount})
+                                    </button>
+                                )}
+                            </div>
+                        )}
+
                         <span className="text-[10px] font-mono text-slate-400 uppercase tracking-wider mr-1 shrink-0">
-                            Jump to:
+                            Color:
                         </span>
 
                         <button
@@ -351,10 +471,10 @@ export const DeckVisualGalleryModal: React.FC<DeckVisualGalleryModalProps> = ({
                                 <p className="text-slate-400 font-medium">No cards found matching "{searchQuery}"</p>
                                 <button
                                     type="button"
-                                    onClick={() => { setSearchQuery(''); setSelectedCategory('all'); }}
+                                    onClick={() => { setSearchQuery(''); setSelectedCategory('all'); setSelectedBoard('all'); }}
                                     className="px-3 py-1.5 rounded-lg bg-indigo-600/30 text-indigo-300 border border-indigo-500/30 text-xs hover:bg-indigo-600/50"
                                 >
-                                    Clear search filter
+                                    Clear filters
                                 </button>
                             </div>
                         ) : (
@@ -416,6 +536,17 @@ export const DeckVisualGalleryModal: React.FC<DeckVisualGalleryModalProps> = ({
                                                                     }}
                                                                 />
                                                             </CardHoverImage>
+
+                                                            {/* Board badge on Top-Left */}
+                                                            {isCommanderCard(card) ? (
+                                                                <span className="absolute top-2 left-2 px-2 py-0.5 rounded-md bg-amber-400 text-slate-950 text-[10px] font-mono font-bold shadow-md z-10 pointer-events-none">
+                                                                    Commander
+                                                                </span>
+                                                            ) : isSideboardCard(card) ? (
+                                                                <span className="absolute top-2 left-2 px-2 py-0.5 rounded-md bg-sky-500 text-white text-[10px] font-mono font-bold shadow-md z-10 pointer-events-none">
+                                                                    Sideboard
+                                                                </span>
+                                                            ) : null}
 
                                                             {/* Quantity Badge on Top-Right */}
                                                             {(card.quantity && card.quantity > 1) && (

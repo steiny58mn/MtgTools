@@ -70,16 +70,48 @@ export const DeckCardsBreakdown: React.FC<DeckCardsBreakdownProps> = ({
 }) => {
     const [searchFilter, setSearchFilter] = useState('');
     const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
-    const [enrichedCards, setEnrichedCards] = useState<DeckCardItem[]>(cards);
+    const [selectedBoard, setSelectedBoard] = useState<'all' | 'commander' | 'main' | 'sideboard'>('all');
     const [isGalleryOpen, setIsGalleryOpen] = useState(false);
+
+    // Defensively sanitize cards: strictly exclude Maybeboard cards, and ensure Commander is included
+    const safeCards = useMemo(() => {
+        const filtered = (cards || []).filter(c => {
+            const cat = (c.category || '').toLowerCase().trim();
+            return !cat.includes('maybe');
+        });
+
+        const cmdrName = (deck?.commanderName || '').trim();
+        if (cmdrName && !filtered.some(c => 
+            c.name.toLowerCase() === cmdrName.toLowerCase() || 
+            Boolean(c.isCommander || c.IsCommander) || 
+            (c.category || '').toLowerCase().includes('commander')
+        )) {
+            const commanderCard: DeckCardItem = {
+                id: `cmdr_${deck?.id || 'main'}_${cmdrName.replace(/\s+/g, '_')}`,
+                name: cmdrName,
+                cmc: 0,
+                quantity: 1,
+                category: 'Commander',
+                isCommander: true,
+                IsCommander: true,
+                imageUrl: deck?.imageUrl || '',
+                colorIdentity: deck?.colorIdentity || [],
+                colors: deck?.colorIdentity || []
+            };
+            return [commanderCard, ...filtered];
+        }
+        return filtered;
+    }, [cards, deck]);
+
+    const [enrichedCards, setEnrichedCards] = useState<DeckCardItem[]>(safeCards);
 
     // Sync cards and enrich in background if any are missing typeLine
     useEffect(() => {
-        setEnrichedCards(cards);
-        const needsEnrichment = cards.some(c => !c.typeLine && (c.scryfallId || c.name));
+        setEnrichedCards(safeCards);
+        const needsEnrichment = safeCards.some(c => !c.typeLine && (c.scryfallId || c.name));
         if (needsEnrichment) {
             let isCancelled = false;
-            enrichDeckCardsFromScryfall(cards).then(res => {
+            enrichDeckCardsFromScryfall(safeCards).then(res => {
                 if (!isCancelled) {
                     setEnrichedCards(res);
                 }
@@ -88,14 +120,48 @@ export const DeckCardsBreakdown: React.FC<DeckCardsBreakdownProps> = ({
                 isCancelled = true;
             };
         }
-    }, [cards]);
+    }, [safeCards]);
 
-    // Filter cards by name if search filter is typed
+    const isCommanderCard = (c: DeckCardItem) => {
+        return Boolean(c.isCommander || c.IsCommander) || 
+            (c.category || '').toLowerCase().includes('commander') ||
+            Boolean(deck?.commanderName && c.name.toLowerCase() === deck.commanderName.toLowerCase());
+    };
+
+    const isSideboardCard = (c: DeckCardItem) => {
+        return (c.category || '').toLowerCase().includes('side');
+    };
+
+    const commanderCount = useMemo(() => {
+        return enrichedCards.filter(isCommanderCard).length;
+    }, [enrichedCards, deck]);
+
+    const sideboardCount = useMemo(() => {
+        return enrichedCards.filter(isSideboardCard).length;
+    }, [enrichedCards]);
+
+    const mainboardCount = useMemo(() => {
+        return enrichedCards.filter(c => !isCommanderCard(c) && !isSideboardCard(c)).length;
+    }, [enrichedCards, deck]);
+
+    // Filter cards by board filter and search filter
     const filteredCards = useMemo(() => {
-        if (!searchFilter.trim()) return enrichedCards;
-        const q = searchFilter.toLowerCase().trim();
-        return enrichedCards.filter(c => c.name.toLowerCase().includes(q));
-    }, [enrichedCards, searchFilter]);
+        let result = enrichedCards;
+
+        if (selectedBoard === 'commander') {
+            result = result.filter(isCommanderCard);
+        } else if (selectedBoard === 'sideboard') {
+            result = result.filter(isSideboardCard);
+        } else if (selectedBoard === 'main') {
+            result = result.filter(c => !isCommanderCard(c) && !isSideboardCard(c));
+        }
+
+        if (searchFilter.trim()) {
+            const q = searchFilter.toLowerCase().trim();
+            result = result.filter(c => c.name.toLowerCase().includes(q));
+        }
+        return result;
+    }, [enrichedCards, selectedBoard, searchFilter, deck]);
 
     // Group by Color -> Alphabetical, with Lands strictly last and separate
     const groupedCategories: GroupedDeckCategory[] = useMemo(() => {
@@ -115,7 +181,7 @@ export const DeckCardsBreakdown: React.FC<DeckCardsBreakdownProps> = ({
     return (
         <>
             <div className="bg-slate-950/90 rounded-2xl p-3 border border-indigo-500/30 space-y-3 shadow-inner">
-                {/* Header, Quick Search, View Mode Toggle, and Visual Grid Button */}
+                {/* Header, Quick Search, Board Selector, View Mode Toggle, and Visual Grid Button */}
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-indigo-500/20">
                     <div className="flex items-center gap-2 flex-wrap">
                         <Layers size={14} className="text-indigo-400 shrink-0" />
@@ -133,6 +199,64 @@ export const DeckCardsBreakdown: React.FC<DeckCardsBreakdownProps> = ({
                     </div>
 
                     <div className="flex items-center gap-1.5 self-end sm:self-auto flex-wrap">
+                        {/* Board Filter Tabs */}
+                        {(sideboardCount > 0 || commanderCount > 0) && (
+                            <div className="flex items-center gap-0.5 bg-slate-900 border border-indigo-500/25 p-0.5 rounded-lg text-[11px] font-mono shrink-0">
+                                <button
+                                    type="button"
+                                    onClick={() => setSelectedBoard('all')}
+                                    className={`px-2 py-0.5 rounded transition-all cursor-pointer ${
+                                        selectedBoard === 'all'
+                                            ? 'bg-indigo-600/40 text-indigo-200 font-bold shadow-xs'
+                                            : 'text-slate-400 hover:text-slate-200'
+                                    }`}
+                                    title="Show all cards (Commander, Main, Side)"
+                                >
+                                    All ({enrichedCards.length})
+                                </button>
+                                {commanderCount > 0 && (
+                                    <button
+                                        type="button"
+                                        onClick={() => setSelectedBoard('commander')}
+                                        className={`px-2 py-0.5 rounded transition-all cursor-pointer ${
+                                            selectedBoard === 'commander'
+                                                ? 'bg-amber-600/40 text-amber-200 font-bold shadow-xs'
+                                                : 'text-slate-400 hover:text-amber-300'
+                                        }`}
+                                        title="Show Commander only"
+                                    >
+                                        Cmdr ({commanderCount})
+                                    </button>
+                                )}
+                                <button
+                                    type="button"
+                                    onClick={() => setSelectedBoard('main')}
+                                    className={`px-2 py-0.5 rounded transition-all cursor-pointer ${
+                                        selectedBoard === 'main'
+                                            ? 'bg-indigo-600/40 text-indigo-200 font-bold shadow-xs'
+                                            : 'text-slate-400 hover:text-slate-200'
+                                    }`}
+                                    title="Show Mainboard only"
+                                >
+                                    Main ({mainboardCount})
+                                </button>
+                                {sideboardCount > 0 && (
+                                    <button
+                                        type="button"
+                                        onClick={() => setSelectedBoard('sideboard')}
+                                        className={`px-2 py-0.5 rounded transition-all cursor-pointer ${
+                                            selectedBoard === 'sideboard'
+                                                ? 'bg-sky-600/40 text-sky-200 font-bold shadow-xs'
+                                                : 'text-slate-400 hover:text-sky-300'
+                                        }`}
+                                        title="Show Sideboard only"
+                                    >
+                                        Side ({sideboardCount})
+                                    </button>
+                                )}
+                            </div>
+                        )}
+
                         <div className="relative w-36 sm:w-44">
                             <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
                             <input
@@ -149,7 +273,7 @@ export const DeckCardsBreakdown: React.FC<DeckCardsBreakdownProps> = ({
                             <button
                                 type="button"
                                 onClick={() => setViewMode('grid')}
-                                className={`p-1 rounded ${viewMode === 'grid' ? 'bg-indigo-600/40 text-indigo-200' : 'text-slate-400 hover:text-slate-200'}`}
+                                className={`p-1 rounded cursor-pointer ${viewMode === 'grid' ? 'bg-indigo-600/40 text-indigo-200' : 'text-slate-400 hover:text-slate-200'}`}
                                 title="Grid view"
                             >
                                 <LayoutGrid size={12} />
@@ -157,7 +281,7 @@ export const DeckCardsBreakdown: React.FC<DeckCardsBreakdownProps> = ({
                             <button
                                 type="button"
                                 onClick={() => setViewMode('list')}
-                                className={`p-1 rounded ${viewMode === 'list' ? 'bg-indigo-600/40 text-indigo-200' : 'text-slate-400 hover:text-slate-200'}`}
+                                className={`p-1 rounded cursor-pointer ${viewMode === 'list' ? 'bg-indigo-600/40 text-indigo-200' : 'text-slate-400 hover:text-slate-200'}`}
                                 title="List view"
                             >
                                 <LayoutList size={12} />
@@ -236,6 +360,17 @@ export const DeckCardsBreakdown: React.FC<DeckCardsBreakdownProps> = ({
                                                                 {cardItem.name}
                                                             </span>
                                                         </CardHoverImage>
+
+                                                        {/* Board indicator tag */}
+                                                        {isCommanderCard(cardItem) ? (
+                                                            <span className="text-[9px] font-mono font-bold px-1 py-0.2 rounded bg-amber-500/25 text-amber-300 border border-amber-500/35 shrink-0">
+                                                                Cmdr
+                                                            </span>
+                                                        ) : isSideboardCard(cardItem) ? (
+                                                            <span className="text-[9px] font-mono font-bold px-1 py-0.2 rounded bg-sky-500/25 text-sky-300 border border-sky-500/35 shrink-0">
+                                                                Side
+                                                            </span>
+                                                        ) : null}
                                                     </div>
 
                                                     {onCardClick && (

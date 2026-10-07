@@ -10,6 +10,8 @@ export interface DeckCardItem {
     quantity?: number;
     category?: string;
     scryfallId?: string;
+    isCommander?: boolean;
+    IsCommander?: boolean;
 }
 
 export interface CommanderDeck {
