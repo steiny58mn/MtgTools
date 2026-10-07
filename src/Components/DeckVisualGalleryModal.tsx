@@ -5,7 +5,9 @@ import {
     Search,
     Shield,
     Plus,
-    Check
+    Check,
+    LayoutGrid,
+    LayoutList
 } from 'lucide-react';
 import type { CommanderDeck, DeckCardItem } from '../Utilities/Interfaces';
 import CardHoverImage from './CardHoverImage';
@@ -23,6 +25,7 @@ interface DeckVisualGalleryModalProps {
     deck: CommanderDeck | null;
     cards?: DeckCardItem[];
     onCardClick?: (cardName: string) => void;
+    initialMode?: 'gallery' | 'list';
 }
 
 type CardSize = 'small' | 'medium' | 'large';
@@ -43,9 +46,11 @@ export const DeckVisualGalleryModal: React.FC<DeckVisualGalleryModalProps> = ({
     onClose,
     deck,
     cards: customCards,
-    onCardClick
+    onCardClick,
+    initialMode = 'gallery'
 }) => {
     const [searchQuery, setSearchQuery] = useState('');
+    const [displayMode, setDisplayMode] = useState<'gallery' | 'list'>(initialMode);
     const [cardSize, setCardSize] = useState<CardSize>('medium');
     const [selectedCategory, setSelectedCategory] = useState<string>('all');
     const [selectedBoard, setSelectedBoard] = useState<'all' | 'commander' | 'main' | 'sideboard'>('all');
@@ -127,8 +132,11 @@ export const DeckVisualGalleryModal: React.FC<DeckVisualGalleryModalProps> = ({
             setSearchQuery('');
             setSelectedCategory('all');
             setSelectedBoard('all');
+            if (initialMode) {
+                setDisplayMode(initialMode);
+            }
         }
-    }, [isOpen]);
+    }, [isOpen, initialMode]);
 
     const isCommanderCard = (c: DeckCardItem) => {
         return Boolean(c.isCommander || c.IsCommander) || 
@@ -186,7 +194,6 @@ export const DeckVisualGalleryModal: React.FC<DeckVisualGalleryModalProps> = ({
         return groups.filter(g => g.category.toLowerCase() === selectedCategory.toLowerCase());
     }, [filteredCards, selectedCategory]);
 
-    
     // Grid sizing classes
     const gridColsClass = useMemo(() => {
         switch (cardSize) {
@@ -278,7 +285,7 @@ export const DeckVisualGalleryModal: React.FC<DeckVisualGalleryModalProps> = ({
                             </div>
                         </div>
 
-                        {/* Middle & Right: Search, Size Toggles, Close */}
+                        {/* Middle & Right: Search, View Mode Toggle, Size Toggles, Close */}
                         <div className="flex items-center gap-2.5 flex-wrap justify-between md:justify-end">
                             {/* Real-time search */}
                             <div className="relative w-full sm:w-52">
@@ -292,46 +299,78 @@ export const DeckVisualGalleryModal: React.FC<DeckVisualGalleryModalProps> = ({
                                 />
                             </div>
 
-                            {/* Card Size Selector */}
-                            <div className="flex items-center gap-1 bg-slate-950/80 p-1 rounded-xl border border-indigo-500/25">
-                                <span className="text-[10px] uppercase font-mono text-slate-400 px-1 hidden lg:inline">Size:</span>
+                            {/* View Mode Toggle: Visual Grid vs Card List */}
+                            <div className="flex items-center rounded-xl border border-indigo-500/25 bg-slate-950/80 p-0.5">
                                 <button
                                     type="button"
-                                    onClick={() => setCardSize('small')}
-                                    className={`px-2 py-1 rounded-lg text-xs font-mono transition-all ${
-                                        cardSize === 'small' 
-                                            ? 'bg-indigo-600 text-white font-bold shadow' 
+                                    onClick={() => setDisplayMode('gallery')}
+                                    className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-mono font-medium transition-all ${
+                                        displayMode === 'gallery'
+                                            ? 'bg-indigo-600 text-white font-bold shadow-xs'
                                             : 'text-slate-400 hover:text-white'
                                     }`}
-                                    title="Compact cards view"
+                                    title="Visual Card Grid"
                                 >
-                                    S
+                                    <LayoutGrid size={13} />
+                                    <span className="hidden sm:inline">Visual Grid</span>
                                 </button>
                                 <button
                                     type="button"
-                                    onClick={() => setCardSize('medium')}
-                                    className={`px-2 py-1 rounded-lg text-xs font-mono transition-all ${
-                                        cardSize === 'medium' 
-                                            ? 'bg-indigo-600 text-white font-bold shadow' 
+                                    onClick={() => setDisplayMode('list')}
+                                    className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-mono font-medium transition-all ${
+                                        displayMode === 'list'
+                                            ? 'bg-indigo-600 text-white font-bold shadow-xs'
                                             : 'text-slate-400 hover:text-white'
                                     }`}
-                                    title="Balanced cards view"
+                                    title="Categorized Card List"
                                 >
-                                    M
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => setCardSize('large')}
-                                    className={`px-2 py-1 rounded-lg text-xs font-mono transition-all ${
-                                        cardSize === 'large' 
-                                            ? 'bg-indigo-600 text-white font-bold shadow' 
-                                            : 'text-slate-400 hover:text-white'
-                                    }`}
-                                    title="Large readable cards view"
-                                >
-                                    L
+                                    <LayoutList size={13} />
+                                    <span className="hidden sm:inline">Card List</span>
                                 </button>
                             </div>
+
+                            {/* Card Size Selector (Only shown in Visual Grid mode) */}
+                            {displayMode === 'gallery' && (
+                                <div className="flex items-center gap-1 bg-slate-950/80 p-1 rounded-xl border border-indigo-500/25">
+                                    <span className="text-[10px] uppercase font-mono text-slate-400 px-1 hidden lg:inline">Size:</span>
+                                    <button
+                                        type="button"
+                                        onClick={() => setCardSize('small')}
+                                        className={`px-2 py-1 rounded-lg text-xs font-mono transition-all ${
+                                            cardSize === 'small' 
+                                                ? 'bg-indigo-600 text-white font-bold shadow' 
+                                                : 'text-slate-400 hover:text-white'
+                                        }`}
+                                        title="Compact cards view"
+                                    >
+                                        S
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setCardSize('medium')}
+                                        className={`px-2 py-1 rounded-lg text-xs font-mono transition-all ${
+                                            cardSize === 'medium' 
+                                                ? 'bg-indigo-600 text-white font-bold shadow' 
+                                                : 'text-slate-400 hover:text-white'
+                                        }`}
+                                        title="Balanced cards view"
+                                    >
+                                        M
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setCardSize('large')}
+                                        className={`px-2 py-1 rounded-lg text-xs font-mono transition-all ${
+                                            cardSize === 'large' 
+                                                ? 'bg-indigo-600 text-white font-bold shadow' 
+                                                : 'text-slate-400 hover:text-white'
+                                        }`}
+                                        title="Large readable cards view"
+                                    >
+                                        L
+                                    </button>
+                                </div>
+                            )}
 
                             {/* Close Button */}
                             <button
@@ -435,7 +474,7 @@ export const DeckVisualGalleryModal: React.FC<DeckVisualGalleryModalProps> = ({
                                 if (code === 'R') return cat === 'Red';
                                 if (code === 'G') return cat === 'Green';
                                 return cat === 'Colorless';
-                            }).length;
+                            }).reduce((sum, c) => sum + (c.quantity || 1), 0);
 
                             if (count === 0) return null;
                             const style = CATEGORY_PILL_STYLES[cat];
@@ -470,7 +509,7 @@ export const DeckVisualGalleryModal: React.FC<DeckVisualGalleryModalProps> = ({
                         </div>
                     )}
 
-                    {/* Scrollable Gallery Content */}
+                    {/* Scrollable Gallery / List Content */}
                     <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-8 scrollbar-thin">
                         {groupedCategories.length === 0 ? (
                             <div className="py-20 text-center space-y-3">
@@ -502,101 +541,163 @@ export const DeckVisualGalleryModal: React.FC<DeckVisualGalleryModalProps> = ({
                                             <div className="flex-1 h-px bg-gradient-to-r from-indigo-500/20 to-transparent" />
                                         </div>
 
-                                        {/* Grid of Card Images */}
-                                        <div className={`grid ${gridColsClass}`}>
-                                            {group.cards.map((card, cardIdx) => {
-                                                const fallbackImg = `https://api.scryfall.com/cards/named?exact=${encodeURIComponent(card.name)}&format=image`;
-                                                const imgSrc = card.imageUrl || fallbackImg;
-                                                const largeImgSrc = card.imageUrl 
-                                                    ? (card.imageUrl.includes('/normal/') ? card.imageUrl.replace('/normal/', '/large/') : card.imageUrl)
-                                                    : `https://api.scryfall.com/cards/named?exact=${encodeURIComponent(card.name)}&format=image&version=large`;
+                                        {displayMode === 'gallery' ? (
+                                            /* Grid of Card Images */
+                                            <div className={`grid ${gridColsClass}`}>
+                                                {group.cards.map((card, cardIdx) => {
+                                                    const fallbackImg = `https://api.scryfall.com/cards/named?exact=${encodeURIComponent(card.name)}&format=image`;
+                                                    const imgSrc = card.imageUrl || fallbackImg;
+                                                    const largeImgSrc = card.imageUrl 
+                                                        ? (card.imageUrl.includes('/normal/') ? card.imageUrl.replace('/normal/', '/large/') : card.imageUrl)
+                                                        : `https://api.scryfall.com/cards/named?exact=${encodeURIComponent(card.name)}&format=image&version=large`;
 
-                                                return (
-                                                    <motion.div
-                                                        key={card.id ? `${card.id}_${cardIdx}` : `${card.name}_${cardIdx}`}
-                                                        layout
-                                                        className={`group relative rounded-2xl bg-slate-900/60 border border-indigo-500/20 hover:border-indigo-500/60 p-1.5 flex flex-col justify-between transition-all hover:shadow-[0_10px_30px_rgba(0,0,0,0.6)] hover:bg-slate-900 ${
-                                                            onCardClick ? 'cursor-pointer' : ''
-                                                        }`}
-                                                        onClick={() => handleCardClicked(card.name)}
-                                                    >
-                                                        {/* Card Image Container with 0-delay Hover Pop-up */}
-                                                        <div className="relative rounded-xl overflow-hidden aspect-[63/88] bg-slate-950">
-                                                            <CardHoverImage
-                                                                src={imgSrc}
-                                                                popoutSrc={largeImgSrc}
-                                                                alt={card.name}
-                                                                delayMs={0}
-                                                                popoutWidth={440}
-                                                                className="w-full h-full block"
-                                                            >
-                                                                <img
+                                                    return (
+                                                        <motion.div
+                                                            key={card.id ? `${card.id}_${cardIdx}` : `${card.name}_${cardIdx}`}
+                                                            layout
+                                                            className={`group relative rounded-2xl bg-slate-900/60 border border-indigo-500/20 hover:border-indigo-500/60 p-1.5 flex flex-col justify-between transition-all hover:shadow-[0_10px_30px_rgba(0,0,0,0.6)] hover:bg-slate-900 ${
+                                                                onCardClick ? 'cursor-pointer' : ''
+                                                            }`}
+                                                            onClick={() => handleCardClicked(card.name)}
+                                                        >
+                                                            {/* Card Image Container with 0-delay Hover Pop-up */}
+                                                            <div className="relative rounded-xl overflow-hidden aspect-[63/88] bg-slate-950">
+                                                                <CardHoverImage
                                                                     src={imgSrc}
+                                                                    popoutSrc={largeImgSrc}
                                                                     alt={card.name}
-                                                                    loading="lazy"
-                                                                    className="w-full h-full object-cover rounded-xl transition-transform duration-300 group-hover:scale-[1.03]"
-                                                                    onError={(e) => {
-                                                                        const target = e.target as HTMLImageElement;
-                                                                        if (target.src !== fallbackImg) {
-                                                                            target.src = fallbackImg;
-                                                                        }
-                                                                    }}
-                                                                />
-                                                            </CardHoverImage>
-
-                                                            {/* Board badge on Top-Left */}
-                                                            {isCommanderCard(card) ? (
-                                                                <span className="absolute top-2 left-2 px-2 py-0.5 rounded-md bg-amber-400 text-slate-950 text-[10px] font-mono font-bold shadow-md z-10 pointer-events-none">
-                                                                    Commander
-                                                                </span>
-                                                            ) : isSideboardCard(card) ? (
-                                                                <span className="absolute top-2 left-2 px-2 py-0.5 rounded-md bg-sky-500 text-white text-[10px] font-mono font-bold shadow-md z-10 pointer-events-none">
-                                                                    Sideboard
-                                                                </span>
-                                                            ) : null}
-
-                                                            {/* Quantity Badge on Top-Right */}
-                                                            {(card.quantity && card.quantity > 1) && (
-                                                                <span className="absolute top-2 right-2 px-2 py-0.5 rounded-md bg-black/80 backdrop-blur-md text-[11px] font-mono font-bold text-white border border-white/20 shadow pointer-events-none">
-                                                                    {card.quantity}x
-                                                                </span>
-                                                            )}
-
-                                                            {/* Click to add overlay hint if onCardClick is enabled */}
-                                                            {onCardClick && (
-                                                                <div className="absolute inset-0 bg-indigo-950/60 backdrop-blur-[2px] opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center p-3 text-center pointer-events-none">
-                                                                    <div className="bg-slate-950/90 rounded-xl px-3 py-1.5 border border-indigo-400 text-xs font-semibold text-indigo-200 flex items-center gap-1.5 shadow-xl">
-                                                                        <Plus size={14} className="text-indigo-400" />
-                                                                        <span>Add to note</span>
-                                                                    </div>
-                                                                </div>
-                                                            )}
-                                                        </div>
-
-                                                        {/* Card Caption Below Image */}
-                                                        <div className="mt-2 px-1 flex items-center justify-between gap-1 min-w-0">
-                                                            <span className="text-xs font-semibold text-slate-200 group-hover:text-indigo-200 truncate" title={card.name}>
-                                                                {card.name}
-                                                            </span>
-
-                                                            {onCardClick && (
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={(e) => {
-                                                                        e.stopPropagation();
-                                                                        handleCardClicked(card.name);
-                                                                    }}
-                                                                    className="p-1 text-slate-400 hover:text-indigo-300 rounded hover:bg-slate-800 transition-colors shrink-0"
-                                                                    title={`Insert [[${card.name}]] into note`}
+                                                                    delayMs={0}
+                                                                    popoutWidth={440}
+                                                                    className="w-full h-full block"
                                                                 >
-                                                                    <Plus size={13} />
-                                                                </button>
+                                                                    <img
+                                                                        src={imgSrc}
+                                                                        alt={card.name}
+                                                                        loading="lazy"
+                                                                        className="w-full h-full object-cover rounded-xl transition-transform duration-300 group-hover:scale-[1.03]"
+                                                                        onError={(e) => {
+                                                                            const target = e.target as HTMLImageElement;
+                                                                            if (target.src !== fallbackImg) {
+                                                                                target.src = fallbackImg;
+                                                                            }
+                                                                        }}
+                                                                    />
+                                                                </CardHoverImage>
+
+                                                                {/* Board badge on Top-Left */}
+                                                                {isCommanderCard(card) ? (
+                                                                    <span className="absolute top-2 left-2 px-2 py-0.5 rounded-md bg-amber-400 text-slate-950 text-[10px] font-mono font-bold shadow-md z-10 pointer-events-none">
+                                                                        Commander
+                                                                    </span>
+                                                                ) : isSideboardCard(card) ? (
+                                                                    <span className="absolute top-2 left-2 px-2 py-0.5 rounded-md bg-sky-500 text-white text-[10px] font-mono font-bold shadow-md z-10 pointer-events-none">
+                                                                        Sideboard
+                                                                    </span>
+                                                                ) : null}
+
+                                                                {/* Quantity Badge on Top-Right */}
+                                                                {(card.quantity && card.quantity > 1) && (
+                                                                    <span className="absolute top-2 right-2 px-2 py-0.5 rounded-md bg-black/80 backdrop-blur-md text-[11px] font-mono font-bold text-white border border-white/20 shadow pointer-events-none">
+                                                                        {card.quantity}x
+                                                                    </span>
+                                                                )}
+
+                                                                {/* Click to add overlay hint if onCardClick is enabled */}
+                                                                {onCardClick && (
+                                                                    <div className="absolute inset-0 bg-indigo-950/60 backdrop-blur-[2px] opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center p-3 text-center pointer-events-none">
+                                                                        <div className="bg-slate-950/90 rounded-xl px-3 py-1.5 border border-indigo-400 text-xs font-semibold text-indigo-200 flex items-center gap-1.5 shadow-xl">
+                                                                            <Plus size={14} className="text-indigo-400" />
+                                                                            <span>Add to note</span>
+                                                                        </div>
+                                                                    </div>
+                                                                )}
+                                                            </div>
+
+                                                            {/* Card Caption Below Image */}
+                                                            <div className="mt-2 px-1 flex items-center justify-between gap-1 min-w-0">
+                                                                <span className="text-xs font-semibold text-slate-200 group-hover:text-indigo-200 truncate" title={card.name}>
+                                                                    {card.name}
+                                                                </span>
+
+                                                                {onCardClick && (
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={(e) => {
+                                                                            e.stopPropagation();
+                                                                            handleCardClicked(card.name);
+                                                                        }}
+                                                                        className="p-1 text-slate-400 hover:text-indigo-300 rounded hover:bg-slate-800 transition-colors shrink-0"
+                                                                        title={`Insert [[${card.name}]] into note`}
+                                                                    >
+                                                                        <Plus size={13} />
+                                                                    </button>
+                                                                )}
+                                                            </div>
+                                                        </motion.div>
+                                                    );
+                                                })}
+                                            </div>
+                                        ) : (
+                                            /* Categorized Card List Breakdown */
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2">
+                                                {group.cards.map((card, cardIdx) => {
+                                                    const fallbackImg = `https://api.scryfall.com/cards/named?exact=${encodeURIComponent(card.name)}&format=image`;
+                                                    const imgSrc = card.imageUrl || fallbackImg;
+                                                    const largeImgSrc = card.imageUrl 
+                                                        ? (card.imageUrl.includes('/normal/') ? card.imageUrl.replace('/normal/', '/large/') : card.imageUrl)
+                                                        : `https://api.scryfall.com/cards/named?exact=${encodeURIComponent(card.name)}&format=image&version=large`;
+
+                                                    return (
+                                                        <div
+                                                            key={card.id ? `${card.id}_${cardIdx}` : `${card.name}_${cardIdx}`}
+                                                            onClick={() => handleCardClicked(card.name)}
+                                                            className={`flex items-center justify-between gap-2 px-3 py-2 rounded-xl bg-slate-900/80 border border-indigo-500/20 hover:border-indigo-500/50 hover:bg-slate-850 transition-all ${
+                                                                onCardClick ? 'cursor-pointer group' : ''
+                                                            }`}
+                                                        >
+                                                            <div className="flex items-center gap-2 min-w-0">
+                                                                <span className="text-xs font-mono font-bold text-slate-400 shrink-0 w-6">
+                                                                    {card.quantity || 1}x
+                                                                </span>
+
+                                                                <CardHoverImage
+                                                                    src={imgSrc}
+                                                                    popoutSrc={largeImgSrc}
+                                                                    alt={card.name}
+                                                                    delayMs={0}
+                                                                    popoutWidth={440}
+                                                                    className="min-w-0"
+                                                                >
+                                                                    <span className="text-xs font-medium text-slate-200 hover:text-indigo-300 hover:underline truncate block">
+                                                                        {card.name}
+                                                                    </span>
+                                                                </CardHoverImage>
+
+                                                                {isCommanderCard(card) ? (
+                                                                    <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-amber-500/25 text-amber-300 border border-amber-500/35 shrink-0">
+                                                                        Cmdr
+                                                                    </span>
+                                                                ) : isSideboardCard(card) ? (
+                                                                    <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-sky-500/25 text-sky-300 border border-sky-500/35 shrink-0">
+                                                                        Side
+                                                                    </span>
+                                                                ) : null}
+                                                            </div>
+
+                                                            {card.typeLine && (
+                                                                <span className="text-[10px] font-mono text-slate-500 truncate max-w-[110px] text-right shrink-0 hidden sm:inline" title={card.typeLine}>
+                                                                    {card.typeLine.split('—')[0].trim()}
+                                                                </span>
+                                                            )}
+
+                                                            {onCardClick && (
+                                                                <Plus size={13} className="text-slate-500 group-hover:text-indigo-300 shrink-0 transition-colors" />
                                                             )}
                                                         </div>
-                                                    </motion.div>
-                                                );
-                                            })}
-                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        )}
                                     </div>
                                 );
                             })

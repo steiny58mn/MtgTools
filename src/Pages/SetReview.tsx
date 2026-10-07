@@ -28,7 +28,6 @@ import {
 import SetSelector from '../Components/SetSelector';
 import SetCardGrid from '../Components/SetCardGrid';
 import AddCardToDecksModal from '../Components/AddCardToDecksModal';
-import DeckCardsBreakdown from '../Components/DeckCardsBreakdown';
 import DeckVisualGalleryModal from '../Components/DeckVisualGalleryModal';
 import { apiPaths, ToolTypeCodes } from '../Utilities/Enums';
 
@@ -151,9 +150,9 @@ export default function SetReview() {
     const [isSearchingCommander, setIsSearchingCommander] = useState(false);
     const [selectedCommanderCard, setSelectedCommanderCard] = useState<ScryfallCard | null>(null);
 
-    // Collapsed decklist view id state
-    const [expandedCommanderDecklistId, setExpandedCommanderDecklistId] = useState<string | null>(null);
+    // Deck cards gallery modal state
     const [galleryModalDeck, setGalleryModalDeck] = useState<CommanderDeck | null>(null);
+    const [galleryInitialMode, setGalleryInitialMode] = useState<'gallery' | 'list'>('gallery');
 
     // Sets & Grid State
     const [sets, setSets] = useState<ScryfallSet[]>([]);
@@ -1330,7 +1329,7 @@ export default function SetReview() {
                                 </p>
                             </div>
                         ) : (
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 items-start">
                                 {sortedDecks.map((deck, dIdx) => (
                                     <motion.div
                                         key={deck.id || `deck_card_${dIdx}`}
@@ -1413,37 +1412,35 @@ export default function SetReview() {
                                                     <div className="flex items-center gap-1.5">
                                                         <button
                                                             type="button"
-                                                            onClick={() => setExpandedCommanderDecklistId(prev => prev === deck.id ? null : deck.id)}
-                                                            className="flex-1 flex items-center justify-between text-xs px-2.5 py-1.5 rounded-lg bg-indigo-950/40 hover:bg-indigo-900/50 border border-indigo-500/30 text-indigo-200 transition-colors cursor-pointer"
+                                                            onClick={() => {
+                                                                setGalleryModalDeck({ ...deck, deckCards: cleanDeckCards });
+                                                                setGalleryInitialMode('list');
+                                                            }}
+                                                            className="flex-1 flex items-center justify-between text-xs px-2.5 py-1.5 rounded-lg bg-indigo-950/40 hover:bg-indigo-900/50 border border-indigo-500/30 text-indigo-200 transition-colors cursor-pointer group/btn"
+                                                            title={"View categorized card list for " + deck.name + " in a modal popup"}
                                                         >
                                                             <span className="flex items-center gap-1.5 font-medium">
-                                                                <Layers size={13} className="text-indigo-400" />
+                                                                <Layers size={13} className="text-indigo-400 group-hover/btn:text-indigo-300" />
                                                                 <span>Deck Cards</span>
                                                             </span>
                                                             <span className="font-mono text-[11px] font-bold text-indigo-300">
-                                                                {totalDeckQuantity} cards {expandedCommanderDecklistId === deck.id ? '▲' : '▼'}
+                                                                {totalDeckQuantity} cards
                                                             </span>
                                                         </button>
 
                                                         <button
                                                             type="button"
-                                                            onClick={() => setGalleryModalDeck({ ...deck, deckCards: cleanDeckCards })}
+                                                            onClick={() => {
+                                                                setGalleryModalDeck({ ...deck, deckCards: cleanDeckCards });
+                                                                setGalleryInitialMode('gallery');
+                                                            }}
                                                             className="px-2.5 py-1.5 rounded-lg bg-indigo-600/25 hover:bg-indigo-600/40 border border-indigo-500/35 text-indigo-200 hover:text-white text-xs font-mono font-medium flex items-center gap-1.5 transition-colors cursor-pointer shadow-sm shrink-0"
-                                                            title={`Open full visual card gallery for ${deck.name} to view and read all cards in a grid`}
+                                                            title={"Open full visual card gallery for " + deck.name + " to view and read all cards in a grid"}
                                                         >
                                                             <Eye size={12} className="text-indigo-400" />
                                                             <span>Visual Grid</span>
                                                         </button>
                                                     </div>
-
-                                                    {expandedCommanderDecklistId === deck.id && (
-                                                        <DeckCardsBreakdown
-                                                            cards={cleanDeckCards}
-                                                            deck={deck}
-                                                            deckName={deck.name}
-                                                            maxHeightClass="max-h-64"
-                                                        />
-                                                    )}
                                                 </div>
                                             );
                                         })()}
@@ -1623,6 +1620,7 @@ export default function SetReview() {
                 isOpen={Boolean(galleryModalDeck)}
                 onClose={() => setGalleryModalDeck(null)}
                 deck={galleryModalDeck}
+                initialMode={galleryInitialMode}
             />
 
             {/* Set Review Auth Modal */}
