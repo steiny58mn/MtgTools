@@ -1,4 +1,4 @@
-import { Link, useLocation } from "react-router-dom";
+﻿import { Link, useLocation } from "react-router-dom";
 import appLogo from '../assets/app-logo.png';
 import mtgNexusLogo from '../assets/mtgnexus.jpeg';
 import { motion, AnimatePresence } from "motion/react";
@@ -6,8 +6,7 @@ import { useState, useEffect, useRef } from "react";
 import { 
     Menu, 
     X, 
-    BookOpen, 
-    MessageSquare, 
+    BookOpen,
     Terminal, 
     Home, 
     ExternalLink, 
@@ -21,7 +20,6 @@ import AuthModal from "../Components/AuthModal";
 
 const navLinks = [
     { to: "/setreview", label: "Set Review", icon: BookOpen },
-    { to: "/gamesummary", label: "Game Summary", icon: MessageSquare },
     { to: "/parsemtgolog", label: "Parse Logs", icon: Terminal },
 ];
 
