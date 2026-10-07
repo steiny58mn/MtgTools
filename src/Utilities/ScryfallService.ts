@@ -508,7 +508,7 @@ export function groupDeckCardsByCmcAndColor(cards: DeckCardItem[]): GroupedDeckC
         return {
             manaValue: mv,
             colorGroups,
-            totalCards: cardsAtMv.length
+            totalCards: cardsAtMv.reduce((sum, c) => sum + (c.quantity || 1), 0)
         };
     });
 }
@@ -597,7 +597,7 @@ export function groupDeckCardsByColor(cards: DeckCardItem[]): GroupedDeckCategor
             return {
                 category: cat,
                 cards: list,
-                totalCards: list.length
+                totalCards: list.reduce((sum, c) => sum + (c.quantity || 1), 0)
             };
         });
 }

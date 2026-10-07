@@ -430,6 +430,7 @@ export default function AddCardToDecksModal({
                                         const isCardsExpanded = Boolean(expandedDeckCards[deck.id]);
                                         const isDecklistExpanded = Boolean(expandedDecklists[deck.id]);
                                         const cleanDeckCards = (deck.deckCards || []).filter(c => !(c.category || '').toLowerCase().includes('maybe'));
+                                        const cleanDeckCardsCount = cleanDeckCards.reduce((sum, c) => sum + (c.quantity || 1), 0);
 
                                         return (
                                             <div
@@ -519,10 +520,10 @@ export default function AddCardToDecksModal({
                                                                                 ? 'bg-indigo-600/30 text-indigo-200 border-indigo-500/40 shadow-sm'
                                                                                 : 'bg-slate-900/80 text-slate-300 hover:text-white border-indigo-500/20 hover:border-indigo-500/40 hover:bg-slate-800'
                                                                         }`}
-                                                                        title={isDecklistExpanded ? `Hide deck cards for ${deck.name}` : `View ${cleanDeckCards.length} deck cards for ${deck.name}`}
+                                                                        title={isDecklistExpanded ? `Hide deck cards for ${deck.name}` : `View ${cleanDeckCardsCount} deck cards for ${deck.name}`}
                                                                     >
                                                                         <Layers size={11} className="text-indigo-400" />
-                                                                        <span>{cleanDeckCards.length} in deck</span>
+                                                                        <span>{cleanDeckCardsCount} in deck</span>
                                                                         {isDecklistExpanded ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
                                                                     </button>
 

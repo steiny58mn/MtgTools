@@ -132,16 +132,20 @@ export const DeckCardsBreakdown: React.FC<DeckCardsBreakdownProps> = ({
         return (c.category || '').toLowerCase().includes('side');
     };
 
+    const totalDeckQuantity = useMemo(() => {
+        return enrichedCards.reduce((sum, c) => sum + (c.quantity || 1), 0);
+    }, [enrichedCards]);
+
     const commanderCount = useMemo(() => {
-        return enrichedCards.filter(isCommanderCard).length;
+        return enrichedCards.filter(isCommanderCard).reduce((sum, c) => sum + (c.quantity || 1), 0);
     }, [enrichedCards, deck]);
 
     const sideboardCount = useMemo(() => {
-        return enrichedCards.filter(isSideboardCard).length;
+        return enrichedCards.filter(isSideboardCard).reduce((sum, c) => sum + (c.quantity || 1), 0);
     }, [enrichedCards]);
 
     const mainboardCount = useMemo(() => {
-        return enrichedCards.filter(c => !isCommanderCard(c) && !isSideboardCard(c)).length;
+        return enrichedCards.filter(c => !isCommanderCard(c) && !isSideboardCard(c)).reduce((sum, c) => sum + (c.quantity || 1), 0);
     }, [enrichedCards, deck]);
 
     // Filter cards by board filter and search filter
@@ -162,6 +166,10 @@ export const DeckCardsBreakdown: React.FC<DeckCardsBreakdownProps> = ({
         }
         return result;
     }, [enrichedCards, selectedBoard, searchFilter, deck]);
+
+    const filteredTotalQuantity = useMemo(() => {
+        return filteredCards.reduce((sum, c) => sum + (c.quantity || 1), 0);
+    }, [filteredCards]);
 
     // Group by Color -> Alphabetical, with Lands strictly last and separate
     const groupedCategories: GroupedDeckCategory[] = useMemo(() => {
@@ -189,7 +197,7 @@ export const DeckCardsBreakdown: React.FC<DeckCardsBreakdownProps> = ({
                             {activeDeckName ? `${activeDeckName} Decklist` : 'Deck Cards'}
                         </span>
                         <span className="text-[11px] font-mono px-2 py-0.2 bg-indigo-500/20 text-indigo-300 rounded-full border border-indigo-500/30">
-                            {filteredCards.length} {filteredCards.length === 1 ? 'card' : 'cards'}
+                            {filteredTotalQuantity} {filteredTotalQuantity === 1 ? 'card' : 'cards'}
                         </span>
                         {onCardClick && (
                             <span className="text-[10px] text-slate-400 italic hidden md:inline">
@@ -212,7 +220,7 @@ export const DeckCardsBreakdown: React.FC<DeckCardsBreakdownProps> = ({
                                     }`}
                                     title="Show all cards (Commander, Main, Side)"
                                 >
-                                    All ({enrichedCards.length})
+                                    All ({totalDeckQuantity})
                                 </button>
                                 {commanderCount > 0 && (
                                     <button

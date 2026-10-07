@@ -140,16 +140,20 @@ export const DeckVisualGalleryModal: React.FC<DeckVisualGalleryModalProps> = ({
         return (c.category || '').toLowerCase().includes('side');
     };
 
+    const totalDeckCards = useMemo(() => {
+        return enrichedCards.reduce((sum, c) => sum + (c.quantity || 1), 0);
+    }, [enrichedCards]);
+
     const commanderCount = useMemo(() => {
-        return enrichedCards.filter(isCommanderCard).length;
+        return enrichedCards.filter(isCommanderCard).reduce((sum, c) => sum + (c.quantity || 1), 0);
     }, [enrichedCards, deck]);
 
     const sideboardCount = useMemo(() => {
-        return enrichedCards.filter(isSideboardCard).length;
+        return enrichedCards.filter(isSideboardCard).reduce((sum, c) => sum + (c.quantity || 1), 0);
     }, [enrichedCards]);
 
     const mainboardCount = useMemo(() => {
-        return enrichedCards.filter(c => !isCommanderCard(c) && !isSideboardCard(c)).length;
+        return enrichedCards.filter(c => !isCommanderCard(c) && !isSideboardCard(c)).reduce((sum, c) => sum + (c.quantity || 1), 0);
     }, [enrichedCards, deck]);
 
     // Filter cards by board and name search
@@ -171,6 +175,10 @@ export const DeckVisualGalleryModal: React.FC<DeckVisualGalleryModalProps> = ({
         return result;
     }, [enrichedCards, selectedBoard, searchQuery, deck]);
 
+    const filteredTotalQuantity = useMemo(() => {
+        return filteredCards.reduce((sum, c) => sum + (c.quantity || 1), 0);
+    }, [filteredCards]);
+
     // Group by Color -> Alphabetical, Lands strictly last and separate
     const groupedCategories: GroupedDeckCategory[] = useMemo(() => {
         const groups = groupDeckCardsByColor(filteredCards);
@@ -178,8 +186,7 @@ export const DeckVisualGalleryModal: React.FC<DeckVisualGalleryModalProps> = ({
         return groups.filter(g => g.category.toLowerCase() === selectedCategory.toLowerCase());
     }, [filteredCards, selectedCategory]);
 
-    const totalDeckCards = enrichedCards.length;
-
+    
     // Grid sizing classes
     const gridColsClass = useMemo(() => {
         switch (cardSize) {
@@ -264,7 +271,7 @@ export const DeckVisualGalleryModal: React.FC<DeckVisualGalleryModalProps> = ({
                                     )}
                                     {colorIdentity.length > 0 && (
                                         <span className="font-mono text-[11px] px-2 py-0.2 rounded bg-purple-500/15 text-purple-300 border border-purple-500/30">
-                                            {colorCombo} [{colorIdentity.join('')}]
+                                            {colorCombo}
                                         </span>
                                     )}
                                 </div>
@@ -355,7 +362,7 @@ export const DeckVisualGalleryModal: React.FC<DeckVisualGalleryModalProps> = ({
                                             : 'bg-slate-900/80 text-slate-300 border-indigo-500/20 hover:bg-slate-800 hover:text-white'
                                     }`}
                                 >
-                                    All ({enrichedCards.length})
+                                    All ({totalDeckCards})
                                 </button>
                                 {commanderCount > 0 && (
                                     <button
@@ -410,7 +417,7 @@ export const DeckVisualGalleryModal: React.FC<DeckVisualGalleryModalProps> = ({
                                     : 'bg-slate-900/80 text-slate-300 border-indigo-500/20 hover:bg-slate-800 hover:text-white'
                             }`}
                         >
-                            All ({filteredCards.length})
+                            All ({filteredTotalQuantity})
                         </button>
 
                         {(['White', 'Blue', 'Black', 'Red', 'Green', 'Multicolor', 'Colorless', 'Lands'] as DeckCardCategory[]).map(cat => {
@@ -600,7 +607,7 @@ export const DeckVisualGalleryModal: React.FC<DeckVisualGalleryModalProps> = ({
                     <div className="px-6 py-2.5 bg-slate-900/90 border-t border-indigo-500/20 flex items-center justify-between text-xs text-slate-400 shrink-0">
                         <div className="flex items-center gap-3">
                             <span className="font-mono text-[11px]">
-                                Showing {filteredCards.length} of {totalDeckCards} cards
+                                Showing {filteredTotalQuantity} of {totalDeckCards} cards
                             </span>
                             {onCardClick && (
                                 <span className="text-[11px] text-slate-500 italic hidden sm:inline">

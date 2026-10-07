@@ -209,6 +209,76 @@ export default function SetReview() {
         }
     }, [globalReviewIntro]);
 
+    // Auto-heal existing decks whose commander was set but colorIdentity/image wasn't updated
+    useEffect(() => {
+        let isCancelled = false;
+        const decksNeedingHealing = decks.filter(d => 
+            d.commanderName && 
+            (!d.colorIdentity || d.colorIdentity.length === 0 || !d.imageUrl)
+        );
+
+        if (decksNeedingHealing.length === 0) return;
+
+        (async () => {
+            let hasChanges = false;
+            const updatedDecks = await Promise.all(decks.map(async (d) => {
+                const needsColors = !d.colorIdentity || d.colorIdentity.length === 0;
+                const needsImage = !d.imageUrl;
+                if (!needsColors && !needsImage) return d;
+
+                const cmdrCard = (d.deckCards || []).find(c => 
+                    c.isCommander || 
+                    (d.commanderName && c.name.toLowerCase() === d.commanderName.toLowerCase())
+                );
+
+                let newColors = d.colorIdentity ? [...d.colorIdentity] : [];
+                let newImg = d.imageUrl || '';
+
+                if (cmdrCard) {
+                    if (newColors.length === 0 && cmdrCard.colorIdentity && cmdrCard.colorIdentity.length > 0) {
+                        newColors = cmdrCard.colorIdentity;
+                    }
+                    if (newColors.length === 0 && cmdrCard.colors && cmdrCard.colors.length > 0) {
+                        newColors = cmdrCard.colors;
+                    }
+                    if (!newImg && cmdrCard.imageUrl) {
+                        newImg = cmdrCard.imageUrl;
+                    }
+                }
+
+                if ((newColors.length === 0 || !newImg) && d.commanderName && d.commanderName !== d.name) {
+                    try {
+                        const scryCard = await getCardByName(d.commanderName);
+                        if (scryCard) {
+                            if (newColors.length === 0) newColors = scryCard.color_identity || [];
+                            if (!newImg) newImg = scryCard.image_uris?.art_crop || scryCard.image_uris?.normal || '';
+                        }
+                    } catch (e) {
+                        console.error('Error auto-healing deck commander info:', e);
+                    }
+                }
+
+                if (newColors.length !== (d.colorIdentity || []).length || newImg !== (d.imageUrl || '')) {
+                    hasChanges = true;
+                    return {
+                        ...d,
+                        colorIdentity: newColors,
+                        imageUrl: newImg
+                    };
+                }
+                return d;
+            }));
+
+            if (!isCancelled && hasChanges) {
+                setDecks(updatedDecks);
+            }
+        })();
+
+        return () => {
+            isCancelled = true;
+        };
+    }, [decks]);
+
     const commanderDebounceRef = useRef<NodeJS.Timeout | null>(null);
     const abortControllerRef = useRef<AbortController | null>(null);
     const setCardsCacheRef = useRef<Map<string, ScryfallCard[]>>(new Map());
@@ -601,7 +671,7 @@ export default function SetReview() {
                         colorIdentity: (c.colorIdentity || c.color_identity || []) as string[],
                         typeLine: (c.typeLine || c.type_line || '') as string,
                         imageUrl: (c.imageUrl || c.image_url || '') as string,
-                        quantity: Number(c.quantity || 1),
+                        quantity: Number(c.quantity || c.Quantity || c.count || c.Count || 1),
                         category: category,
                         scryfallId: (c.scryfallId || c.scryfall_id || '') as string,
                         isCommander: isCmdr,
@@ -630,29 +700,51 @@ export default function SetReview() {
 
                 const enrichedMappedCards = await enrichDeckCardsFromScryfall(mappedCards);
 
+                // Identify commander card and resolve effective commander name
+                const commanderCardFromCards = enrichedMappedCards.find(c => c.isCommander);
+                const effectiveCommanderName = (commander || commanderCardFromCards?.name || '').trim();
+
+                let colors: string[] = Array.isArray(item.commanderColorIdentity) && item.commanderColorIdentity.length > 0
+                    ? item.commanderColorIdentity
+                    : [];
+                let img = item.commanderArtUrl || item.coverCardUrl || '';
+
+                if (commanderCardFromCards) {
+                    if (colors.length === 0 && commanderCardFromCards.colorIdentity && commanderCardFromCards.colorIdentity.length > 0) {
+                        colors = commanderCardFromCards.colorIdentity;
+                    }
+                    if (colors.length === 0 && commanderCardFromCards.colors && commanderCardFromCards.colors.length > 0) {
+                        colors = commanderCardFromCards.colors;
+                    }
+                    if (!img && commanderCardFromCards.imageUrl) {
+                        img = commanderCardFromCards.imageUrl;
+                    }
+                }
+
+                if (effectiveCommanderName && (colors.length === 0 || !img)) {
+                    const card = await getCardByName(effectiveCommanderName);
+                    if (card) {
+                        if (colors.length === 0) colors = card.color_identity || [];
+                        if (!img) img = card.image_uris?.art_crop || card.image_uris?.normal || card.card_faces?.[0]?.image_uris?.art_crop || card.card_faces?.[0]?.image_uris?.normal || '';
+                    }
+                }
+
                 if (existingIdx !== -1) {
                     const existing = updated[existingIdx];
                     updated[existingIdx] = {
                         ...existing,
-                        deckCards: enrichedMappedCards,
-                        imageUrl: existing.imageUrl || item.commanderArtUrl || item.coverCardUrl || ''
+                        name: deckName,
+                        commanderName: effectiveCommanderName || existing.commanderName || deckName,
+                        colorIdentity: colors.length > 0 ? colors : (existing.colorIdentity && existing.colorIdentity.length > 0 ? existing.colorIdentity : colors),
+                        imageUrl: img || existing.imageUrl || '',
+                        deckCards: enrichedMappedCards
                     };
                     updatedCount++;
                 } else {
-                    let colors: string[] = Array.isArray(item.commanderColorIdentity) ? item.commanderColorIdentity : [];
-                    let img = item.commanderArtUrl || item.coverCardUrl || '';
-                    if (commander && (colors.length === 0 || !img)) {
-                        const card = await getCardByName(commander);
-                        if (card) {
-                            if (colors.length === 0) colors = card.color_identity;
-                            if (!img) img = card.image_uris?.art_crop || card.image_uris?.normal || '';
-                        }
-                    }
-
                     updated.push({
                         id: item.deckId || item.id || `deck_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
                         name: deckName,
-                        commanderName: commander || deckName,
+                        commanderName: effectiveCommanderName || deckName,
                         colorIdentity: colors,
                         imageUrl: img,
                         isCommander: true,
@@ -1268,12 +1360,6 @@ export default function SetReview() {
                                                     <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30">
                                                         {getColorComboNickname(deck.colorIdentity)}
                                                     </span>
-                                                    <span className="text-[10px] font-mono text-slate-400">
-                                                        {deck.colorIdentity.length > 0 ? `[${deck.colorIdentity.join('')}]` : '[C]'}
-                                                    </span>
-                                                    <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                                                        IsCommander: true
-                                                    </span>
                                                 </div>
                                             </div>
                                         </div>
@@ -1319,6 +1405,7 @@ export default function SetReview() {
                                         {/* Imported Deck Cards (MtgDeckbuilder) */}
                                         {(() => {
                                             const cleanDeckCards = (deck.deckCards || []).filter(c => !(c.category || '').toLowerCase().includes('maybe'));
+                                            const totalDeckQuantity = cleanDeckCards.reduce((sum, c) => sum + (c.quantity || 1), 0);
                                             if (cleanDeckCards.length === 0) return null;
 
                                             return (
@@ -1334,7 +1421,7 @@ export default function SetReview() {
                                                                 <span>Deck Cards</span>
                                                             </span>
                                                             <span className="font-mono text-[11px] font-bold text-indigo-300">
-                                                                {cleanDeckCards.length} cards {expandedCommanderDecklistId === deck.id ? '▲' : '▼'}
+                                                                {totalDeckQuantity} cards {expandedCommanderDecklistId === deck.id ? '▲' : '▼'}
                                                             </span>
                                                         </button>
 
